@@ -1,4 +1,4 @@
-package main
+package delayedQ
 
 import (
 	"container/heap"
