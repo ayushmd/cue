@@ -47,14 +47,14 @@ func (s *store) Pop() any {
 	return nil
 }
 
-type TTLQueue struct {
+type Queue struct {
 	mux   *sync.Mutex
 	store store
 	sub   chan any
 }
 
-func NewTTLQueue() *TTLQueue {
-	q := &TTLQueue{
+func NewQueue() *Queue {
+	q := &Queue{
 		mux:   &sync.Mutex{},
 		store: make([]*element, 0),
 		sub:   make(chan any, 100),
@@ -64,11 +64,11 @@ func NewTTLQueue() *TTLQueue {
 	return q
 }
 
-func (q *TTLQueue) Subscribe() chan any {
+func (q *Queue) Subscribe() chan any {
 	return q.sub
 }
 
-func (q *TTLQueue) CollectTTL() {
+func (q *Queue) CollectTTL() {
 	for {
 		q.mux.Lock()
 		if q.store.Len() > 0 {
@@ -81,7 +81,7 @@ func (q *TTLQueue) CollectTTL() {
 	}
 }
 
-func (q *TTLQueue) Push(data any, priority int64) {
+func (q *Queue) Push(data any, priority int64) {
 	// append the element to the store
 	el := &element{
 		priority: priority,
@@ -95,7 +95,7 @@ func (q *TTLQueue) Push(data any, priority int64) {
 	heap.Fix(&q.store, el.index)
 }
 
-func (q *TTLQueue) Pop() any {
+func (q *Queue) Pop() any {
 	q.mux.Lock()
 	defer q.mux.Unlock()
 	if q.store.Len() == 0 {
