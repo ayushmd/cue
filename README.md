@@ -1,5 +1,9 @@
 ﻿# DelayedQ
 
+```
+go get github.com/ayushmd/delayedQ@latest
+```
+
 Recieve messages from queue after a certain time or on a certain time. Useful for scheduling jobs, notifications.
 
 ```go
