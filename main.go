@@ -1,147 +1,160 @@
-package delayedQ
+package main
 
 import (
-	"container/heap"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
 	"sync"
-	"time"
+
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
-type element struct {
-	priority int64
-	data     any
-	index    int
+type Server struct {
+	m      *Master
+	mu     sync.Mutex
+	srv    *http.Server
+	nextID int
 }
 
-type store []*element
-
-func (s *store) Len() int {
-	return len(*s)
-}
-
-func (s *store) Less(i, j int) bool {
-	h := *s
-	return h[i].priority < h[j].priority
-}
-
-func (s *store) Swap(i, j int) {
-	h := *s
-	h[j], h[i] = h[i], h[j]
-	h[i].index = i
-	h[j].index = j
-}
-
-func (s *store) Push(x any) {
-	h := *s
-	h = append(h, x.(*element))
-	*s = h
-}
-
-func (s *store) Pop() any {
-	h := *s
-	n := len(h)
-	if len(h) > 0 {
-		el := h[n-1]
-		*s = h[0 : n-1]
-		return el
+func NewServer() *Server {
+	return &Server{
+		m:      NewMaster(),
+		nextID: 0,
 	}
-	return nil
 }
 
-type Queue struct {
-	mux   *sync.Mutex
-	store store
-	sub   chan any
-}
-
-func NewQueue() *Queue {
-	q := &Queue{
-		mux:   &sync.Mutex{},
-		store: make([]*element, 0),
-		sub:   make(chan any, 100),
+func (s *Server) listen(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Queue name missing", http.StatusBadRequest)
+		return
 	}
-	heap.Init(&q.store)
-	go q.CollectTTL()
-	return q
-}
+	queueName := parts[3]
 
-func (q *Queue) Subscribe() chan any {
-	return q.sub
-}
-
-func (q *Queue) CollectTTL() {
-	for {
-		q.mux.Lock()
-		if q.store.Len() > 0 {
-			time.Sleep(time.Until(time.Unix(q.store[0].priority, 0)))
-			q.mux.Unlock()
-			q.sub <- q.Pop()
-		} else {
-			q.mux.Unlock()
+	s.mu.Lock()
+	id := s.nextID
+	s.nextID++
+	s.mu.Unlock()
+	var que *Queue = nil
+	for k, q := range s.m.queues {
+		if k == queueName {
+			que = q
+			break
 		}
 	}
-}
 
-func (q *Queue) Push(data any, priority int64) {
-	// append the element to the store
-	el := &element{
-		priority: priority,
-		data:     data,
-		index:    q.store.Len(),
-	}
-	q.mux.Lock()
-	defer q.mux.Unlock()
-	heap.Push(&q.store, el)
-	// fix the store order
-	heap.Fix(&q.store, el.index)
-}
-
-func (q *Queue) Pop() any {
-	q.mux.Lock()
-	defer q.mux.Unlock()
-	if q.store.Len() == 0 {
-		return nil
+	if que == nil {
+		http.Error(w, "No queue found", http.StatusBadRequest)
+		return
 	}
 
-	el := heap.Pop(&q.store)
-	if el == nil {
-		return nil
-	}
+	que.mu.Lock()
+	que.Listeners = append(que.Listeners, Listener{
+		w:  w,
+		id: id,
+	})
+	que.mu.Unlock()
 
-	return el.(*element).data
+	notify := r.Context().Done()
+	go func() {
+		<-notify
+		que.mu.Lock()
+		var ind int = -1
+		for i, v := range que.Listeners {
+			if v.id == id {
+				ind = i
+				break
+			}
+		}
+		if ind != -1 {
+			que.Listeners = append(que.Listeners[:ind], que.Listeners[ind+1:]...)
+		}
+		que.mu.Unlock()
+		fmt.Println("Client disconnected:", id)
+	}()
+	select {}
 }
 
-// type TTLItem struct {
-// 	id        int
-// 	createdAt int64
-// }
+type Item struct {
+	QueueName string `json:"queueName"`
+	Data      any    `json:"data"`
+	TTL       int    `json:"ttl"`
+}
 
-// func main() {
-// 	ttlq := NewTTLQueue()
+func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusInternalServerError)
+		return
+	}
+	var data Item
+	if err := json.Unmarshal(body, &data); err != nil {
+		http.Error(w, "Failed to read body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+	qs := s.m.ReturnPossibleQs(data.QueueName)
+	if len(qs) == 0 {
+		fmt.Fprintln(w, "Queue not found")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	err = s.m.ds.CreateSync(int64(data.TTL), body)
+	if err != nil {
+		http.Error(w, "Failed to create", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
 
-// 	// Background queue listner
-// 	go func() {
-// 		for {
-// 			select {
-// 			case job := <-ttlq.Subscribe():
-// 				jobj := job.(*TTLItem)
-// 				fmt.Printf("Recieved Job %d: Created At: %d Recieved At: %d\n", jobj.id, jobj.createdAt, time.Now().Unix())
-// 			}
-// 		}
-// 	}()
+type CreateQueueRequest struct {
+	QueueName string `json:"queueName"`
+}
 
-// 	ttlq.Push(&TTLItem{
-// 		id:        1,
-// 		createdAt: time.Now().Unix(),
-// 	}, time.Now().Add(10*time.Second).Unix())
+func (s *Server) createQueue(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println("Failed to read body")
+		http.Error(w, "Failed to read body", http.StatusInternalServerError)
+		return
+	}
+	var data CreateQueueRequest
+	if err := json.Unmarshal(body, &data); err != nil {
+		fmt.Println("Failed to parse body")
+		http.Error(w, "Failed to parse body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+	qs := s.m.ReturnPossibleQs(data.QueueName)
+	if len(qs) != 0 {
+		fmt.Fprintln(w, "Queue name already exsists")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	q := NewQueue(data.QueueName)
+	s.m.CreateQueue(q)
+	w.WriteHeader(http.StatusOK)
+}
 
-// 	ttlq.Push(&TTLItem{
-// 		id:        2,
-// 		createdAt: time.Now().Unix(),
-// 	}, time.Now().Add(5*time.Second).Unix())
+func main() {
+	s := NewServer()
 
-// 	ttlq.Push(&TTLItem{
-// 		id:        3,
-// 		createdAt: time.Now().Unix(),
-// 	}, time.Now().Add(2*time.Second).Unix())
-// 	select {}
-// }
+	mux := http.NewServeMux()
+	mux.HandleFunc("/item/listen/", s.listen)
+	mux.HandleFunc("/item/push", s.pushItem)
+	mux.HandleFunc("/queue/create", s.createQueue)
+
+	h2s := &http2.Server{}
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: h2c.NewHandler(mux, h2s),
+	}
+	s.srv = server
+
+	fmt.Println("Starting HTTP/2 (h2c) server on :8080")
+	log.Fatal(s.srv.ListenAndServe())
+}
