@@ -26,15 +26,15 @@ func NewQueue(name string) *Queue {
 	}
 }
 
-type Master struct {
+type Scheduler struct {
 	sendCh chan []byte
 	queues map[string]*Queue
 	ds     *DataStorage
 	pq     *PriorityQueue
 }
 
-func NewMaster() *Master {
-	m := &Master{
+func NewScheduler() *Scheduler {
+	m := &Scheduler{
 		sendCh: make(chan []byte),
 		queues: make(map[string]*Queue),
 		ds:     NewDataStorage(),
@@ -44,26 +44,31 @@ func NewMaster() *Master {
 	return m
 }
 
-func (m *Master) Poll() {
-	ticker := time.NewTicker(5 * time.Second)
+func (m *Scheduler) Poll() {
+	ticker := time.NewTicker(500 * time.Millisecond)
 	lister := time.NewTicker(20 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
 			now := time.Now().UnixMilli()
 			top, _ := m.ds.PeekTTL()
-			fmt.Println("The Top is: ", top, now)
-			if now >= top {
-				items, err := m.ds.ItemsSized(10)
-				if err != nil {
-					fmt.Println(err)
-				}
-				fmt.Println("Total items: ", len(items))
-				if len(items) != 0 {
-					m.ds.DeleteItemRange(int64(items[0].TTL), int64(items[len(items)-1].TTL))
-					for _, item := range items {
-						m.pq.Push(item, int64(item.TTL))
-					}
+			if now >= top && top != 0 {
+				if m.ds.TryLock() {
+					go func() {
+						defer m.ds.Unlock()
+						items, err := m.ds.ItemsSized(10)
+						if err != nil {
+							fmt.Println(err)
+						}
+						if len(items) != 0 {
+							m.ds.DeleteItemRange(int64(items[0].TTL), int64(items[len(items)-1].TTL))
+							for _, item := range items {
+								m.pq.Push(item, int64(item.TTL))
+							}
+						}
+					}()
+				} else {
+					fmt.Println("Already running")
 				}
 			}
 		case <-lister.C:
@@ -73,7 +78,7 @@ func (m *Master) Poll() {
 				fmt.Println("Key: ", string(it.Key()), " Value: ", string(it.Value()))
 			}
 		case job := <-m.pq.Subscribe():
-			iobj := job.(*Item)
+			iobj := job.(Item)
 			q, ok := m.queues[iobj.QueueName]
 			if ok {
 				q.mu.Lock()
@@ -86,12 +91,13 @@ func (m *Master) Poll() {
 				flusher.Flush()
 				q.ind = (q.ind + 1) % len(q.Listeners)
 				q.mu.Unlock()
+				m.ds.CreateDeadItem(iobj)
 			}
 		}
 	}
 }
 
-func (m *Master) ReturnPossibleQs(pattern string) []*Queue {
+func (m *Scheduler) ReturnPossibleQs(pattern string) []*Queue {
 	arr := make([]*Queue, 0)
 	for k, v := range m.queues {
 		if k == pattern {
@@ -101,7 +107,7 @@ func (m *Master) ReturnPossibleQs(pattern string) []*Queue {
 	return arr
 }
 
-func (m *Master) CreateQueue(q *Queue) {
+func (m *Scheduler) CreateQueue(q *Queue) {
 	m.queues[q.Name] = q
 	m.ds.CreateQueue(q.Name)
 }

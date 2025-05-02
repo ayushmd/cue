@@ -95,7 +95,8 @@ func (q *PriorityQueue) CollectTTL() {
 		q.mux.Unlock()
 
 		// Sleep a bit to avoid busy spin if queue is empty
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
+		// runtime.Gosched()
 	}
 }
 
@@ -103,12 +104,11 @@ func (q *PriorityQueue) Push(data any, priority int64) {
 	el := &element{
 		priority: priority,
 		data:     data,
-		index:    0, // index will be managed by heap
+		index:    0,
 	}
 	q.mux.Lock()
 	defer q.mux.Unlock()
 	heap.Push(&q.store, el)
-	// No need for heap.Fix here
 }
 
 func (q *PriorityQueue) Pop() any {

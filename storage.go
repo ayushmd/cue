@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -18,7 +20,16 @@ var DLQPrefix string = "dead"
 var DLQPrefixByte []byte = []byte(DLQPrefix)
 
 type DataStorage struct {
-	db *pebble.DB
+	db   *pebble.DB
+	flag int32
+}
+
+func (ds *DataStorage) TryLock() bool {
+	return atomic.CompareAndSwapInt32(&ds.flag, 0, 1)
+}
+
+func (ds *DataStorage) Unlock() {
+	atomic.StoreInt32(&ds.flag, 0)
 }
 
 func NewDataStorage() *DataStorage {
@@ -34,11 +45,14 @@ func NewDataStorage() *DataStorage {
 
 func (ds *DataStorage) GetQueues() ([][]byte, error) {
 	arr := make([][]byte, 0)
-	it, err := ds.db.NewIter(nil)
+	it, err := ds.db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte(fmt.Sprintf("%s:0", QPrefix)),
+		UpperBound: []byte(fmt.Sprintf("%s:z", QPrefix)),
+	})
 	if err != nil {
 		return arr, err
 	}
-	for it.SeekPrefixGE(QPrefixByte); it.Valid(); it.Next() {
+	for it.First(); it.Valid(); it.Next() {
 		arr = append(arr, it.Value())
 	}
 	return arr, nil
@@ -58,7 +72,7 @@ func (ds *DataStorage) CreateItemAsync(item Item) error {
 	if err != nil {
 		return err
 	}
-	key := fmt.Sprintf("%s:%d", IPrefix, item.TTL)
+	key := fmt.Sprintf("%s:%d:%d", IPrefix, item.TTL, time.Now().UnixMilli())
 	return ds.db.Set([]byte(key), data, pebble.NoSync)
 }
 
@@ -67,51 +81,68 @@ func (ds *DataStorage) CreateItemSync(item Item) error {
 	if err != nil {
 		return err
 	}
-	key := fmt.Sprintf("%s:%d", IPrefix, item.TTL)
+	key := fmt.Sprintf("%s:%d:%d", IPrefix, item.TTL, time.Now().UnixMilli())
 	return ds.db.Set([]byte(key), data, pebble.Sync)
 }
 
 func (ds *DataStorage) CreateSync(ttl int64, value []byte) error {
-	key := fmt.Sprintf("%s:%d", IPrefix, ttl)
+	key := fmt.Sprintf("%s:%d:%d", IPrefix, ttl, time.Now().UnixMilli())
 	return ds.db.Set([]byte(key), value, pebble.Sync)
 }
 
-var oldestEpoch int64 = time.Unix(0, 0).UnixMilli()
-var oldestEpocByte []byte = []byte(fmt.Sprintf("%s:%d", IPrefix, oldestEpoch))
+// var oldestEpoch int64 = time.Unix(0, 0).UnixMilli()
+var oldestEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", IPrefix))
 
 func (ds *DataStorage) PeekItem() (Item, error) {
-	it, err := ds.db.NewIter(nil)
+	iter, err := ds.db.NewIter(nil)
 	if err != nil {
 		return Item{}, err
 	}
-	it.SeekGE(oldestEpocByte)
-	var item Item
-	if it.Valid() {
-		data := it.Value()
-		err := json.Unmarshal(data, &item)
-		if err != nil {
-			return Item{}, err
-		}
-		return item, nil
+	defer iter.Close()
+
+	iter.SeekGE(oldestEpocByte)
+	if !iter.Valid() {
+		return Item{}, nil
 	}
-	return Item{}, nil
+
+	key := iter.Key()
+	if len(key) < len(IPrefix)+1 || !bytes.HasPrefix(key, []byte(IPrefix)) {
+		return Item{}, nil
+	}
+
+	var item Item
+	if err := json.Unmarshal(iter.Value(), &item); err != nil {
+		return Item{}, err
+	}
+
+	return item, nil
 }
 
 func (ds *DataStorage) PeekTTL() (int64, error) {
-	// it, err := ds.db.NewIter(nil)
 	iter, err := ds.db.NewIter(nil)
 	if err != nil {
 		return 0, err
 	}
+	defer iter.Close()
+
 	iter.SeekGE(oldestEpocByte)
-	if iter.Valid() {
-		fmt.Println("Recieved in peek: ", string(iter.Value()), string(iter.Key()[5:]))
-		k := iter.Key()[6:]
-		s := string(k)
-		num, _ := strconv.ParseInt(s, 10, 64)
-		return num, nil
+	if !iter.Valid() {
+		return 0, nil
 	}
-	return 0, nil
+
+	key := iter.Key()
+	if len(key) < 19 || !bytes.HasPrefix(key, IPrefixByte) {
+		return 0, nil
+	}
+
+	// Extract and parse epoch part from key
+	epochBytes := key[len(IPrefix)+1 : len(IPrefix)+14]
+	num, err := strconv.ParseInt(string(epochBytes), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return num, nil
 }
 
 func (ds *DataStorage) ItemsSized(size int) ([]Item, error) {
@@ -131,7 +162,6 @@ func (ds *DataStorage) ItemsSized(size int) ([]Item, error) {
 		if err != nil {
 			return arr, err
 		}
-		fmt.Println("The item: ", item)
 		arr = append(arr, item)
 	}
 	return arr, nil
@@ -139,8 +169,28 @@ func (ds *DataStorage) ItemsSized(size int) ([]Item, error) {
 
 func (ds *DataStorage) DeleteItemRange(start, end int64) error {
 	startK := fmt.Sprintf("%s:%d", IPrefix, start)
-	endK := fmt.Sprintf("%s:%d", IPrefix, end)
+	endK := fmt.Sprintf("%s:%d", IPrefix, end+1)
+	// it, _ := ds.db.NewIter(&pebble.IterOptions{
+	// 	LowerBound: []byte(startK),
+	// 	UpperBound: []byte(endK),
+	// })
+	// for it.First(); it.Valid(); it.Next() {
+	// 	fmt.Println("Items in range:", string(it.Key()), string(it.Value()))
+	// }
 	return ds.db.DeleteRange([]byte(startK), []byte(endK), pebble.Sync)
+}
+
+func (ds *DataStorage) CreateDead(data []byte) error {
+	deadK := fmt.Sprintf("%s:%d", DLQPrefix, time.Now().UnixMilli())
+	return ds.db.Set([]byte(deadK), data, pebble.Sync)
+}
+
+func (ds *DataStorage) CreateDeadItem(item Item) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	return ds.CreateDead(data)
 }
 
 // func data() {

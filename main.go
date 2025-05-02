@@ -14,7 +14,7 @@ import (
 )
 
 type Server struct {
-	m      *Master
+	m      *Scheduler
 	mu     sync.Mutex
 	srv    *http.Server
 	nextID int
@@ -22,7 +22,7 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		m:      NewMaster(),
+		m:      NewScheduler(),
 		nextID: 0,
 	}
 }

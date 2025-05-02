@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -19,20 +21,72 @@ func setupDB(t *testing.T) *DataStorage {
 	return ds
 }
 
-// func TestCreateAndGetQueues(t *testing.T) {
-// 	ds := setupDB(t)
+func TestCreateAndGetQueues(t *testing.T) {
+	ds := setupDB(t)
 
-// 	err := ds.CreateQueue("queue1")
-// 	assert.NoError(t, err)
+	err := ds.CreateQueue("queue:1")
+	assert.NoError(t, err)
 
-// 	err = ds.CreateQueue("queue2")
-// 	assert.NoError(t, err)
+	err = ds.CreateQueue("queue:2")
+	assert.NoError(t, err)
 
-// 	queues, err := ds.GetQueues()
-// 	assert.NoError(t, err)
-// 	assert.Len(t, queues, 2)
-// }
+	queues, err := ds.GetQueues()
+	assert.NoError(t, err)
+	assert.Len(t, queues, 2)
+}
 
+func TestMilliTimestamp(t *testing.T) {
+	tmpstmp := time.Now().UnixMilli()
+	var oldestEpoch int64 = time.Unix(0, 0).UnixMilli()
+	fmt.Println(tmpstmp, oldestEpoch)
+}
+
+func TestItemInsertSequence(t *testing.T) {
+	ds := setupDB(t)
+
+	now := time.Now()
+	arr := []Item{
+		{TTL: int(now.Add(5 * time.Second).UnixMilli()), Data: "item1"},
+		{TTL: int(now.Add(10 * time.Second).UnixMilli()), Data: "item2"},
+		{TTL: int(now.Add(15 * time.Second).UnixMilli()), Data: "item3"},
+	}
+
+	_ = ds.CreateItemSync(arr[0])
+	_ = ds.CreateItemSync(arr[1])
+	_ = ds.CreateItemSync(arr[2])
+	i := 0
+	it, _ := ds.db.NewIter(nil)
+	for it.First(); it.Valid(); it.Next() {
+		var item Item
+		json.Unmarshal(it.Value(), &item)
+		assert.Equal(t, arr[i].Data, item.Data)
+		i++
+	}
+}
+
+func TestItemInsertSequenceDesc(t *testing.T) {
+	ds := setupDB(t)
+
+	now := time.Now()
+	arr := []Item{
+		{TTL: int(now.Add(15 * time.Second).UnixMilli()), Data: "item1"},
+		{TTL: int(now.Add(10 * time.Second).UnixMilli()), Data: "item2"},
+		{TTL: int(now.Add(5 * time.Second).UnixMilli()), Data: "item3"},
+	}
+
+	_ = ds.CreateItemSync(arr[0])
+	_ = ds.CreateItemSync(arr[1])
+	_ = ds.CreateItemSync(arr[2])
+
+	i := 2
+	it, _ := ds.db.NewIter(nil)
+	for it.First(); it.Valid(); it.Next() {
+		var item Item
+		json.Unmarshal(it.Value(), &item)
+		assert.Equal(t, arr[i].Data, item.Data)
+		i--
+	}
+}
 func TestCreateItemSyncAndPeek(t *testing.T) {
 	ds := setupDB(t)
 
@@ -55,6 +109,7 @@ func TestCreateItemAsyncAndPeekTTL(t *testing.T) {
 		TTL:  int(time.Now().Add(15 * time.Second).UnixMilli()),
 		Data: "async_value",
 	}
+	// ds.CreateQueue("test")
 	err := ds.CreateItemAsync(item)
 	assert.NoError(t, err)
 
@@ -113,7 +168,7 @@ func TestDeleteItemRange(t *testing.T) {
 	_ = ds.CreateItemSync(item3)
 
 	start := now.Add(5 * time.Second).UnixMilli()
-	end := now.Add(15 * time.Second).UnixMilli()
+	end := now.Add(10 * time.Second).UnixMilli()
 
 	err := ds.DeleteItemRange(start, end)
 	assert.NoError(t, err)
@@ -123,4 +178,26 @@ func TestDeleteItemRange(t *testing.T) {
 
 	assert.Len(t, items, 1) // Only item3 should remain
 	assert.Equal(t, "item3", items[0].Data)
+}
+
+func TestDeleteItemRangeSingleItem(t *testing.T) {
+	ds := setupDB(t)
+
+	now := time.Now()
+	item1 := Item{TTL: int(now.Add(5 * time.Second).UnixMilli()), Data: "item1"}
+
+	_ = ds.CreateItemSync(item1)
+	// start := now.Add(5 * time.Second).UnixMilli()
+	// end := now.Add(15 * time.Second).UnixMilli()
+	items, err := ds.ItemsSized(10)
+	assert.NoError(t, err)
+
+	err = ds.DeleteItemRange(int64(items[0].TTL), int64(items[len(items)-1].TTL))
+	assert.NoError(t, err)
+
+	items, err = ds.ItemsSized(30)
+	assert.NoError(t, err)
+
+	assert.Len(t, items, 0)
+	// assert.Equal(t, "item3", items[0].Data)
 }
