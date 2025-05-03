@@ -16,12 +16,17 @@ var QPrefix string = "queue"
 var QPrefixByte []byte = []byte(QPrefix)
 var IPrefix string = "items"
 var IPrefixByte []byte = []byte(IPrefix)
+var ZPrefix string = "zombie"
+var ZPrefixByte []byte = []byte(ZPrefix)
 var DLQPrefix string = "dead"
 var DLQPrefixByte []byte = []byte(DLQPrefix)
+var oldestIEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", IPrefix))
+var oldestZEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", ZPrefix))
 
 type DataStorage struct {
-	db   *pebble.DB
-	flag int32
+	db    *pebble.DB
+	flag  int32
+	zflag int32
 }
 
 func (ds *DataStorage) TryLock() bool {
@@ -30,6 +35,14 @@ func (ds *DataStorage) TryLock() bool {
 
 func (ds *DataStorage) Unlock() {
 	atomic.StoreInt32(&ds.flag, 0)
+}
+
+func (ds *DataStorage) ZTryLock() bool {
+	return atomic.CompareAndSwapInt32(&ds.zflag, 0, 1)
+}
+
+func (ds *DataStorage) ZUnlock() {
+	atomic.StoreInt32(&ds.zflag, 0)
 }
 
 func NewDataStorage() *DataStorage {
@@ -52,6 +65,7 @@ func (ds *DataStorage) GetQueues() ([][]byte, error) {
 	if err != nil {
 		return arr, err
 	}
+	defer it.Close()
 	for it.First(); it.Valid(); it.Next() {
 		arr = append(arr, it.Value())
 	}
@@ -90,9 +104,6 @@ func (ds *DataStorage) CreateSync(ttl int64, value []byte) error {
 	return ds.db.Set([]byte(key), value, pebble.Sync)
 }
 
-// var oldestEpoch int64 = time.Unix(0, 0).UnixMilli()
-var oldestEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", IPrefix))
-
 func (ds *DataStorage) PeekItem() (Item, error) {
 	iter, err := ds.db.NewIter(nil)
 	if err != nil {
@@ -100,7 +111,7 @@ func (ds *DataStorage) PeekItem() (Item, error) {
 	}
 	defer iter.Close()
 
-	iter.SeekGE(oldestEpocByte)
+	iter.SeekGE(oldestIEpocByte)
 	if !iter.Valid() {
 		return Item{}, nil
 	}
@@ -125,7 +136,7 @@ func (ds *DataStorage) PeekTTL() (int64, error) {
 	}
 	defer iter.Close()
 
-	iter.SeekGE(oldestEpocByte)
+	iter.SeekGE(oldestIEpocByte)
 	if !iter.Valid() {
 		return 0, nil
 	}
@@ -145,17 +156,69 @@ func (ds *DataStorage) PeekTTL() (int64, error) {
 	return num, nil
 }
 
+func (ds *DataStorage) PeekTTLZombie() (int64, error) {
+	iter, err := ds.db.NewIter(nil)
+	if err != nil {
+		return 0, err
+	}
+	defer iter.Close()
+
+	iter.SeekGE(oldestZEpocByte)
+	if !iter.Valid() {
+		return 0, nil
+	}
+
+	key := iter.Key()
+	if len(key) < 19 || !bytes.HasPrefix(key, ZPrefixByte) {
+		return 0, nil
+	}
+
+	// Extract and parse epoch part from key
+	epochBytes := key[len(ZPrefix)+1 : len(ZPrefix)+14]
+	num, err := strconv.ParseInt(string(epochBytes), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return num, nil
+}
+
+func (ds *DataStorage) PeekZombieItem() (Item, error) {
+	iter, err := ds.db.NewIter(nil)
+	if err != nil {
+		return Item{}, err
+	}
+	defer iter.Close()
+
+	iter.SeekGE(oldestZEpocByte)
+	if !iter.Valid() {
+		return Item{}, nil
+	}
+
+	key := iter.Key()
+	if len(key) < len(ZPrefix)+1 || !bytes.HasPrefix(key, []byte(ZPrefix)) {
+		return Item{}, nil
+	}
+
+	var item Item
+	if err := json.Unmarshal(iter.Value(), &item); err != nil {
+		return Item{}, err
+	}
+
+	return item, nil
+}
+
 func (ds *DataStorage) ItemsSized(size int) ([]Item, error) {
 	arr := make([]Item, 0)
 	curr := time.Now().Add(time.Duration(size) * time.Second).UnixMilli()
 	currEncode := fmt.Sprintf("%s:%d", IPrefix, curr)
 	it, err := ds.db.NewIter(&pebble.IterOptions{
-		LowerBound: oldestEpocByte,
+		LowerBound: oldestIEpocByte,
 		UpperBound: []byte(currEncode),
 	})
 	if err != nil {
 		return arr, err
 	}
+	defer it.Close()
 	for it.First(); it.Valid(); it.Next() {
 		var item Item
 		err := json.Unmarshal(it.Value(), &item)
@@ -191,6 +254,40 @@ func (ds *DataStorage) CreateDeadItem(item Item) error {
 		return err
 	}
 	return ds.CreateDead(data)
+}
+
+func (ds *DataStorage) CreateZombie(data []byte) error {
+	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), time.Now().UnixMilli())
+	return ds.db.Set([]byte(zK), data, pebble.Sync)
+}
+
+func (ds *DataStorage) NewBatch() *pebble.Batch {
+	return ds.db.NewBatch()
+}
+func (ds *DataStorage) CreateZombieItem(item Item) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	return ds.CreateZombie(data)
+}
+
+func (ds *DataStorage) BatchCreateZombieItem(batch *pebble.Batch, item Item) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), time.Now().UnixMilli())
+	return batch.Set([]byte(zK), data, pebble.Sync)
+}
+
+func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	zK := fmt.Sprintf("%s:%d:%d", DLQPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), time.Now().UnixMilli())
+	return batch.Set([]byte(zK), data, pebble.Sync)
 }
 
 // func data() {

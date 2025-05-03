@@ -35,47 +35,29 @@ func (s *Server) listen(w http.ResponseWriter, r *http.Request) {
 	}
 	queueName := parts[3]
 
-	s.mu.Lock()
-	id := s.nextID
-	s.nextID++
-	s.mu.Unlock()
-	var que *Queue = nil
-	for k, q := range s.m.queues {
-		if k == queueName {
-			que = q
-			break
-		}
-	}
-
-	if que == nil {
+	ok := s.m.r.CheckExsists(queueName)
+	if !ok {
 		http.Error(w, "No queue found", http.StatusBadRequest)
 		return
 	}
 
-	que.mu.Lock()
-	que.Listeners = append(que.Listeners, Listener{
+	s.mu.Lock()
+	id := s.nextID
+	s.nextID++
+	s.mu.Unlock()
+
+	s.m.r.AddListener(queueName, Listener{
 		w:  w,
 		id: id,
 	})
-	que.mu.Unlock()
 
 	notify := r.Context().Done()
 	go func() {
 		<-notify
-		que.mu.Lock()
-		var ind int = -1
-		for i, v := range que.Listeners {
-			if v.id == id {
-				ind = i
-				break
-			}
-		}
-		if ind != -1 {
-			que.Listeners = append(que.Listeners[:ind], que.Listeners[ind+1:]...)
-		}
-		que.mu.Unlock()
+		s.m.r.RemoveListener(queueName, id)
 		fmt.Println("Client disconnected:", id)
 	}()
+
 	select {}
 }
 
@@ -83,6 +65,7 @@ type Item struct {
 	QueueName string `json:"queueName"`
 	Data      any    `json:"data"`
 	TTL       int    `json:"ttl"`
+	Retries   int    `json:"retries"`
 }
 
 func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
@@ -97,13 +80,7 @@ func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	qs := s.m.ReturnPossibleQs(data.QueueName)
-	if len(qs) == 0 {
-		fmt.Fprintln(w, "Queue not found")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	err = s.m.ds.CreateSync(int64(data.TTL), body)
+	err = s.m.CreateItem(data, body)
 	if err != nil {
 		http.Error(w, "Failed to create", http.StatusInternalServerError)
 		return
@@ -129,14 +106,11 @@ func (s *Server) createQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	qs := s.m.ReturnPossibleQs(data.QueueName)
-	if len(qs) != 0 {
-		fmt.Fprintln(w, "Queue name already exsists")
-		w.WriteHeader(http.StatusOK)
+	err = s.m.CreateQueue(data.QueueName)
+	if err != nil {
+		http.Error(w, "Failed to create queue", http.StatusInternalServerError)
 		return
 	}
-	q := NewQueue(data.QueueName)
-	s.m.CreateQueue(q)
 	w.WriteHeader(http.StatusOK)
 }
 
