@@ -54,6 +54,7 @@ func (m *Scheduler) Poll() {
 		case <-it.C:
 			m.Peek()
 		case <-zit.C:
+			m.PeekZombie()
 		case job := <-m.pq.Subscribe():
 			go m.ConsumeItem(job.(Item))
 		case <-lister.C:
