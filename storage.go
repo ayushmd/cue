@@ -86,7 +86,7 @@ func (ds *DataStorage) CreateItemAsync(item Item) error {
 	if err != nil {
 		return err
 	}
-	key := fmt.Sprintf("%s:%d:%d", IPrefix, item.TTL, time.Now().UnixMilli())
+	key := fmt.Sprintf("%s:%d:%d", IPrefix, item.TTL, item.Id)
 	return ds.db.Set([]byte(key), data, pebble.NoSync)
 }
 
@@ -95,12 +95,11 @@ func (ds *DataStorage) CreateItemSync(item Item) error {
 	if err != nil {
 		return err
 	}
-	key := fmt.Sprintf("%s:%d:%d", IPrefix, item.TTL, time.Now().UnixMilli())
-	return ds.db.Set([]byte(key), data, pebble.Sync)
+	return ds.CreateSync(item.Id, int64(item.TTL), data)
 }
 
-func (ds *DataStorage) CreateSync(ttl int64, value []byte) error {
-	key := fmt.Sprintf("%s:%d:%d", IPrefix, ttl, time.Now().UnixMilli())
+func (ds *DataStorage) CreateSync(id int64, ttl int64, value []byte) error {
+	key := fmt.Sprintf("%s:%d:%d", IPrefix, ttl, id)
 	return ds.db.Set([]byte(key), value, pebble.Sync)
 }
 
@@ -243,8 +242,18 @@ func (ds *DataStorage) DeleteItemRange(start, end int64) error {
 	return ds.db.DeleteRange([]byte(startK), []byte(endK), pebble.Sync)
 }
 
-func (ds *DataStorage) CreateDead(data []byte) error {
-	deadK := fmt.Sprintf("%s:%d", DLQPrefix, time.Now().UnixMilli())
+func (ds *DataStorage) DeleteItem(item Item) error {
+	startK := fmt.Sprintf("%s:%d:%d", IPrefix, item.TTL, item.Id)
+	return ds.db.Delete([]byte(startK), pebble.Sync)
+}
+
+func (ds *DataStorage) BatchDeleteItem(b *pebble.Batch, item Item) error {
+	startK := fmt.Sprintf("%s:%d:%d", IPrefix, item.TTL, item.Id)
+	return b.Delete([]byte(startK), pebble.Sync)
+}
+
+func (ds *DataStorage) CreateDead(id int64, data []byte) error {
+	deadK := fmt.Sprintf("%s:%d", DLQPrefix, id)
 	return ds.db.Set([]byte(deadK), data, pebble.Sync)
 }
 
@@ -253,11 +262,11 @@ func (ds *DataStorage) CreateDeadItem(item Item) error {
 	if err != nil {
 		return err
 	}
-	return ds.CreateDead(data)
+	return ds.CreateDead(item.Id, data)
 }
 
-func (ds *DataStorage) CreateZombie(data []byte) error {
-	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), time.Now().UnixMilli())
+func (ds *DataStorage) CreateZombie(id int64, ttl int64, data []byte) error {
+	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, ttl, id)
 	return ds.db.Set([]byte(zK), data, pebble.Sync)
 }
 
@@ -269,16 +278,26 @@ func (ds *DataStorage) CreateZombieItem(item Item) error {
 	if err != nil {
 		return err
 	}
-	return ds.CreateZombie(data)
+	return ds.CreateZombie(item.Id, int64(item.TTL), data)
 }
+
+// func (ds *DataStorage) SetZombieItem(item Item) error {
+// 	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), item.Id)
+// 	return ds.db.Set()
+// }
 
 func (ds *DataStorage) BatchCreateZombieItem(batch *pebble.Batch, item Item) error {
 	data, err := json.Marshal(item)
 	if err != nil {
 		return err
 	}
-	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), time.Now().UnixMilli())
+	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, item.TTL, item.Id)
 	return batch.Set([]byte(zK), data, pebble.Sync)
+}
+
+func (ds *DataStorage) BatchDeleteZombieItem(batch *pebble.Batch, item Item) error {
+	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, item.TTL, item.Id)
+	return batch.Delete([]byte(zK), pebble.Sync)
 }
 
 func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error {
@@ -286,7 +305,7 @@ func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error
 	if err != nil {
 		return err
 	}
-	zK := fmt.Sprintf("%s:%d:%d", DLQPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), time.Now().UnixMilli())
+	zK := fmt.Sprintf("%s:%d:%d", DLQPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), item.Id)
 	return batch.Set([]byte(zK), data, pebble.Sync)
 }
 

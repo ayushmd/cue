@@ -28,6 +28,7 @@ func NewScheduler() *Scheduler {
 		ds: NewDataStorage(),
 		pq: NewPriorityQueue(),
 		zq: NewPriorityQueue(),
+		r:  NewRouter(),
 		ch: make(chan Item, 1000),
 	}
 	go m.Sender()
@@ -47,7 +48,7 @@ func (s *Scheduler) Sender() {
 func (m *Scheduler) Poll() {
 	it := time.NewTicker(500 * time.Millisecond)
 	zit := time.NewTicker(500 * time.Millisecond)
-	lister := time.NewTicker(20 * time.Second)
+	lister := time.NewTicker(10 * time.Second)
 
 	for {
 		select {
@@ -56,7 +57,9 @@ func (m *Scheduler) Poll() {
 		case <-zit.C:
 			m.PeekZombie()
 		case job := <-m.pq.Subscribe():
-			go m.ConsumeItem(job.(Item))
+			item := job.(Item)
+			// go m.ConsumeItem(job.(Item))
+			go m.r.SendItem(item.QueueName, item.Data)
 		case <-lister.C:
 			fmt.Println("\nPrinting DB:")
 			it, _ := m.ds.db.NewIter(nil)
@@ -69,31 +72,38 @@ func (m *Scheduler) Poll() {
 
 func (s *Scheduler) ConsumeItem(item Item) {
 	arr := s.r.SendItem(item.QueueName, item.Data)
+	fmt.Println("Number of retires before: ", item.Retries)
 	(&item).Retries = item.Retries - 1
+	fmt.Println("Number of retires left: ", item.Retries)
+	b := s.ds.NewBatch()
+	defer b.Close()
 	if len(arr) == 0 {
-		if item.Retries >= 0 {
-			s.ds.CreateZombieItem(item)
+		if item.Retries > 0 {
+			s.ds.BatchDeleteZombieItem(b, item)
+			(&item).TTL = int(time.Now().Add(5 * time.Second).UnixMilli())
+			s.ds.BatchCreateZombieItem(b, item)
 		} else {
-			s.ds.CreateDeadItem(item)
+			s.ds.BatchDeleteZombieItem(b, item)
+			s.ds.BatchCreateDeadItem(b, item)
 		}
 	}
 	if ZombieWhenAllPatternNotMatch {
-		b := s.ds.NewBatch()
-		defer b.Close()
 		for _, q := range arr {
 			(&item).QueueName = q.queueName
 			if !q.sent {
 				if item.Retries >= 0 {
+					(&item).TTL = int(time.Now().Add(5 * time.Second).UnixMilli())
 					s.ds.BatchCreateZombieItem(b, item)
 				} else {
 					s.ds.BatchCreateDeadItem(b, item)
+					s.ds.BatchDeleteZombieItem(b, item)
 				}
 			}
 		}
-		err := b.Commit(pebble.Sync)
-		if err != nil {
-			fmt.Println("Failed to commit")
-		}
+	}
+	err := b.Commit(pebble.Sync)
+	if err != nil {
+		fmt.Println("Failed to commit")
 	}
 }
 
@@ -107,14 +117,26 @@ func (m *Scheduler) PutToPQ() {
 		b := m.ds.NewBatch()
 		for _, item := range items {
 			m.pq.Push(item, int64(item.TTL))
+			m.ds.BatchDeleteItem(b, item)
 			(&item).Retries = MaxZombiefiedRetries
-			m.ds.BatchCreateZombieItem(b, item)
+			ttlTime := time.UnixMilli(int64(item.TTL))
+			delta := time.Until(ttlTime)
+			addup := time.Now().Add(5 * time.Second)
+			if delta > 0 {
+				addup = addup.Add(delta * time.Second)
+			}
+			(&item).TTL = int(addup.UnixMilli())
+			qs := m.r.GetMatchingQueues(item.QueueName)
+			for _, q := range qs {
+				(&item).QueueName = q.Name
+				m.ds.BatchCreateZombieItem(b, item)
+			}
 		}
 		if err := b.Commit(pebble.Sync); err != nil {
 			fmt.Println("Error in commiting")
 		}
+		// m.ds.DeleteItemRange(int64(items[0].TTL), int64(items[len(items)-1].TTL))
 		b.Close()
-		m.ds.DeleteItemRange(int64(items[0].TTL), int64(items[len(items)-1].TTL))
 	}
 }
 
@@ -136,7 +158,7 @@ func (m *Scheduler) PeekZombie() {
 	if now >= int64(item.TTL) && item.TTL != 0 {
 		if m.ds.ZTryLock() {
 			defer m.ds.ZUnlock()
-			go m.ConsumeItem(item)
+			m.ConsumeItem(item)
 		} else {
 			fmt.Println("Already running")
 		}
@@ -156,10 +178,11 @@ func (s *Scheduler) CreateItem(item Item, data []byte) error {
 		return &QueueDoesNotExsists{}
 	}
 	now := time.Now().UnixMilli()
+	item.Id = now
 	if int64(item.TTL) < now {
 		(&item).Retries = MaxZombiefiedRetries
 		s.ch <- item
 		return nil
 	}
-	return s.ds.CreateSync(int64(item.TTL), data)
+	return s.ds.CreateItemSync(item)
 }

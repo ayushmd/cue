@@ -62,6 +62,7 @@ func (s *Server) listen(w http.ResponseWriter, r *http.Request) {
 }
 
 type Item struct {
+	Id        int64  `json:"id"`
 	QueueName string `json:"queueName"`
 	Data      any    `json:"data"`
 	TTL       int    `json:"ttl"`
