@@ -1,39 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
 	"sync"
 )
-
-type Queue struct {
-	mu        sync.Mutex
-	Name      string
-	ind       int
-	Listeners []Listener
-}
-
-type QueueExsistsError struct {
-}
-
-func (e *QueueExsistsError) Error() string {
-	return "Queue Already Exsists"
-}
-
-type QueueDoesNotExsists struct {
-}
-
-func (e QueueDoesNotExsists) Error() string {
-	return "Queue does not exsists"
-}
-
-func NewQueue(name string) *Queue {
-	return &Queue{
-		Name: name,
-		ind:  0,
-	}
-}
 
 type Router struct {
 	mu     sync.RWMutex
@@ -84,6 +57,16 @@ func (r *Router) CreateQueue(qname string) error {
 	return nil
 }
 
+func (r *Router) DeleteQueue(qname string) error {
+	if !r.CheckExsists(qname) {
+		return &QueueDoesNotExsists{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.queues, qname)
+	return nil
+}
+
 func (r *Router) AddListener(qname string, l Listener) {
 	r.mu.RLock()
 	q := r.queues[qname]
@@ -109,13 +92,25 @@ func (r *Router) RemoveListener(qname string, id int) {
 	}
 }
 
-func (r *Router) NotifyListener(l Listener, data any) {
+type NotifyRequest struct {
+	Id   int64 `json:"id"`
+	Data any   `json:"data"`
+}
+
+func (r *Router) NotifyListener(l Listener, id int64, data any) {
 	flusher, ok := l.w.(http.Flusher)
 	if !ok {
 		http.Error(l.w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	fmt.Fprintln(l.w, data)
+	sendData, _ := json.Marshal(NotifyRequest{
+		Id:   id,
+		Data: data,
+	})
+	l.w.Header().Set("Content-Type", "application/json")
+	l.w.Header().Set("Cache-Control", "no-cache")
+	fmt.Println("Sending data: ", string(sendData))
+	fmt.Fprintln(l.w, sendData)
 	flusher.Flush()
 }
 
@@ -124,9 +119,9 @@ type SentItemResponse struct {
 	queueName string
 }
 
-func (r *Router) SendItem(pattern string, data any) []SentItemResponse {
+func (r *Router) SendItem(item Item) []SentItemResponse {
 	arr := make([]SentItemResponse, 0)
-	qs := r.GetMatchingQueues(pattern)
+	qs := r.GetMatchingQueues(item.QueueName)
 	if len(qs) == 0 {
 		return arr
 	}
@@ -141,7 +136,7 @@ func (r *Router) SendItem(pattern string, data any) []SentItemResponse {
 		} else {
 			q.ind = (q.ind + 1) % len(q.Listeners)
 			l := q.Listeners[q.ind]
-			go r.NotifyListener(l, data)
+			go r.NotifyListener(l, item.Id, item.Data)
 		}
 	}
 	return arr

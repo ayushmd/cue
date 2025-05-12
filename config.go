@@ -2,7 +2,7 @@ package main
 
 // The difference when item is sent directly to priority queue
 // instead of db
-const PriorityQMainQDiff int = 9 * 1000 // 9 seconds
+const PriorityQMainQDiff int64 = 9 * 1000 // 9 seconds
 
 // The pattern when sending out for listener
 // false - If sent to even one queue other queue patterns are ignored
@@ -12,3 +12,6 @@ const ZombieWhenAllPatternNotMatch = false
 
 // The number of retries to send to zombified
 const MaxZombiefiedRetries = 2
+
+// The time after which the retry is performed
+const RetryAfterTimeout = 10

@@ -136,6 +136,24 @@ func TestItemsSized(t *testing.T) {
 	assert.Equal(t, "item1", items[0].Data)
 }
 
+func TestCreateAck(t *testing.T) {
+	ds := setupDB(t)
+	id := time.Now().UnixMilli()
+	err := ds.CreateAck(id)
+	assert.NoError(t, err)
+	exsists, err := ds.CheckAckDeleteExsists(id)
+	assert.NoError(t, err)
+	assert.True(t, exsists)
+}
+
+func TestDeleteAckWithoutSet(t *testing.T) {
+	ds := setupDB(t)
+	id := time.Now().UnixMilli()
+	exsists, err := ds.CheckAckDeleteExsists(id)
+	assert.NoError(t, err)
+	assert.False(t, exsists)
+}
+
 func TestItemsSized2(t *testing.T) {
 	ds := setupDB(t)
 

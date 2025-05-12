@@ -20,6 +20,8 @@ var ZPrefix string = "zombie"
 var ZPrefixByte []byte = []byte(ZPrefix)
 var DLQPrefix string = "dead"
 var DLQPrefixByte []byte = []byte(DLQPrefix)
+var AckPrefix string = "ack"
+var AckPrefixByte []byte = []byte(AckPrefix)
 var oldestIEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", IPrefix))
 var oldestZEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", ZPrefix))
 
@@ -75,6 +77,11 @@ func (ds *DataStorage) GetQueues() ([][]byte, error) {
 func (ds *DataStorage) CreateQueue(name string) error {
 	key := fmt.Sprintf("%s:%s", QPrefix, name)
 	return ds.db.Set([]byte(key), []byte("1"), pebble.Sync)
+}
+
+func (ds *DataStorage) DeleteQueue(name string) error {
+	key := fmt.Sprintf("%s:%s", QPrefix, name)
+	return ds.db.Delete([]byte(key), pebble.Sync)
 }
 
 func (ds *DataStorage) DB() *pebble.DB {
@@ -267,7 +274,7 @@ func (ds *DataStorage) CreateDeadItem(item Item) error {
 
 func (ds *DataStorage) CreateZombie(id int64, ttl int64, data []byte) error {
 	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, ttl, id)
-	return ds.db.Set([]byte(zK), data, pebble.Sync)
+	return ds.db.Set([]byte(zK), data, pebble.NoSync)
 }
 
 func (ds *DataStorage) NewBatch() *pebble.Batch {
@@ -292,12 +299,17 @@ func (ds *DataStorage) BatchCreateZombieItem(batch *pebble.Batch, item Item) err
 		return err
 	}
 	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, item.TTL, item.Id)
-	return batch.Set([]byte(zK), data, pebble.Sync)
+	return batch.Set([]byte(zK), data, pebble.NoSync)
 }
 
 func (ds *DataStorage) BatchDeleteZombieItem(batch *pebble.Batch, item Item) error {
 	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, item.TTL, item.Id)
-	return batch.Delete([]byte(zK), pebble.Sync)
+	return batch.Delete([]byte(zK), pebble.NoSync)
+}
+
+func (ds *DataStorage) DeleteZombieItem(item Item) error {
+	zK := fmt.Sprintf("%s:%d:%d", ZPrefix, item.TTL, item.Id)
+	return ds.db.Delete([]byte(zK), pebble.NoSync)
 }
 
 func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error {
@@ -309,34 +321,26 @@ func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error
 	return batch.Set([]byte(zK), data, pebble.Sync)
 }
 
-// func data() {
-// 	db, err := pebble.Open("demo", &pebble.Options{})
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	key := []byte("lorem")
-// 	if err := db.Set(key, []byte("ipsum"), pebble.Sync); err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	// if err := db.Merge(key, []byte("hola"), pebble.Sync); err != nil {
-// 	// 	log.Fatal(err)
-// 	// }
-// 	iter, _ := db.NewIter(nil)
-// 	for iter.First(); iter.Valid(); iter.Next() {
-// 		fmt.Printf("%s %s\n", iter.Key(), string(iter.Value()))
-// 	}
-// 	if err := iter.Close(); err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	value, closer, err := db.Get([]byte("lorem"))
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	if err := closer.Close(); err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	fmt.Printf("%s %s\n", key, value)
-// 	if err := db.Close(); err != nil {
-// 		log.Fatal(err)
-// 	}
-// }
+func (ds *DataStorage) CreateAck(id int64) error {
+	key := fmt.Sprintf("%s:%d", AckPrefix, id)
+	return ds.db.Set([]byte(key), []byte("1"), pebble.NoSync)
+}
+
+func (ds *DataStorage) CheckAckDeleteExsists(id int64) (exsists bool, err error) {
+	key := fmt.Sprintf("%s:%d", AckPrefix, id)
+	value, closer, err := ds.db.Get([]byte(key))
+	if err != nil {
+		if err == pebble.ErrNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := closer.Close(); err != nil {
+		return false, err
+	}
+	if string(value) == "1" {
+		exsists = true
+	}
+	err = ds.db.Delete([]byte(key), pebble.NoSync)
+	return
+}
