@@ -24,15 +24,32 @@ func setupDB(t *testing.T) *DataStorage {
 func TestCreateAndGetQueues(t *testing.T) {
 	ds := setupDB(t)
 
-	err := ds.CreateQueue("queue:1")
+	err := ds.CreateQueue("test")
 	assert.NoError(t, err)
 
-	err = ds.CreateQueue("queue:2")
+	err = ds.CreateQueue("asd")
 	assert.NoError(t, err)
 
 	queues, err := ds.GetQueues()
 	assert.NoError(t, err)
 	assert.Len(t, queues, 2)
+}
+
+func TestGetQueues(t *testing.T) {
+	ds := setupDB(t)
+	err := ds.CreateQueue("~badqueue") // '~' > 'z', so it is out of upper bound
+	assert.NoError(t, err)
+
+	// Insert a valid queue
+	err = ds.CreateQueue("a") // 'a' is between '0' and 'z'
+	assert.NoError(t, err)
+
+	queues, err := ds.GetQueues()
+	assert.NoError(t, err)
+	fmt.Println(queues)
+
+	// Should return only one valid queue
+	assert.Len(t, queues, 1, "expected only one queue in bounds")
 }
 
 func TestMilliTimestamp(t *testing.T) {

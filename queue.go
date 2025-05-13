@@ -30,6 +30,25 @@ func NewQueue(name string) *Queue {
 	}
 }
 
-// func ListAllQueues() {
-// 	ds := NewDataStorage()
-// }
+func ListAllQueues() ([]string, error) {
+	ds := NewDataStorage()
+	arr := make([]string, 0)
+	qs, err := ds.GetQueues()
+	if err != nil {
+		return arr, err
+	}
+	for _, q := range qs {
+		arr = append(arr, string(q))
+	}
+	return arr, nil
+}
+
+func DeleteQueue(qname string) error {
+	ds := NewDataStorage()
+	return ds.DeleteQueue(qname)
+}
+
+func CreateQueue(qname string) error {
+	ds := NewDataStorage()
+	return ds.CreateQueue(qname)
+}

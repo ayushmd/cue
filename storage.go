@@ -76,7 +76,7 @@ func (ds *DataStorage) GetQueues() ([][]byte, error) {
 
 func (ds *DataStorage) CreateQueue(name string) error {
 	key := fmt.Sprintf("%s:%s", QPrefix, name)
-	return ds.db.Set([]byte(key), []byte("1"), pebble.Sync)
+	return ds.db.Set([]byte(key), []byte(name), pebble.Sync)
 }
 
 func (ds *DataStorage) DeleteQueue(name string) error {

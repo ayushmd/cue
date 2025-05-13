@@ -128,8 +128,9 @@ func (m *Scheduler) PopItem(b *pebble.Batch, item Item) {
 	delta := time.Until(ttlTime)
 	addup := time.Now().Add(5 * time.Second)
 	if delta > 0 {
-		addup = addup.Add(delta * time.Second)
+		addup = addup.Add(delta)
 	}
+	fmt.Println("Times ttl: ", ttlTime, "Delta: ", delta, "Addup: ", addup, addup.UnixMilli())
 	(&item).TTL = int(addup.UnixMilli())
 	qs := m.r.GetMatchingQueues(item.QueueName)
 	for _, q := range qs {
@@ -207,6 +208,7 @@ func (s *Scheduler) CreateItem(item Item, data []byte) error {
 		if err := b.Commit(pebble.Sync); err != nil {
 			fmt.Println("Failed to commit: ", err)
 		}
+		return nil
 	}
 	return s.ds.CreateItemSync(item)
 }

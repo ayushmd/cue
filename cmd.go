@@ -22,7 +22,55 @@ func RunCmd() {
 		},
 	}
 
+	var listQueueCmd = &cobra.Command{
+		Use:   "list",
+		Short: "List all queues",
+		Run: func(cmd *cobra.Command, args []string) {
+			qs, _ := ListAllQueues()
+			for _, q := range qs {
+				fmt.Println(q)
+			}
+		},
+	}
+	var deleteQueueCmd = &cobra.Command{
+		Use:   "delete [queue_name]",
+		Short: "Delete a queue by name",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			queueName := args[0]
+			err := DeleteQueue(queueName)
+			if err != nil {
+				log.Fatalf("Failed to delete queue: %v", err)
+			}
+			fmt.Printf("Deleted queue: %s\n", queueName)
+		},
+	}
+
+	var createQueueCmd = &cobra.Command{
+		Use:   "create [queue_name]",
+		Short: "Delete a queue by name",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			queueName := args[0]
+			err := CreateQueue(queueName)
+			if err != nil {
+				log.Fatalf("Failed to create queue: %v", err)
+			}
+			fmt.Printf("Created queue: %s\n", queueName)
+		},
+	}
+
+	var queueCmd = &cobra.Command{
+		Use:   "queue",
+		Short: "Manage queues",
+	}
+
 	rootCmd.AddCommand(serverCmd)
+	queueCmd.AddCommand(listQueueCmd)
+	queueCmd.AddCommand(deleteQueueCmd)
+	queueCmd.AddCommand(createQueueCmd)
+
+	rootCmd.AddCommand(queueCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
