@@ -84,7 +84,7 @@ func (s *Scheduler) Retry(b *pebble.Batch, acked bool, item Item) {
 	if acked || item.Retries <= 0 {
 		s.ds.BatchCreateDeadItem(b, item)
 	} else {
-		(&item).TTL = int(time.Now().Add(5 * time.Second).UnixMilli())
+		(&item).TTL = time.Now().Add(5 * time.Second).UnixMilli()
 		s.ds.BatchCreateZombieItem(b, item)
 	}
 }
@@ -131,7 +131,7 @@ func (m *Scheduler) PopItem(b *pebble.Batch, item Item) {
 		addup = addup.Add(delta)
 	}
 	fmt.Println("Times ttl: ", ttlTime, "Delta: ", delta, "Addup: ", addup, addup.UnixMilli())
-	(&item).TTL = int(addup.UnixMilli())
+	(&item).TTL = addup.UnixMilli()
 	qs := m.r.GetMatchingQueues(item.QueueName)
 	for _, q := range qs {
 		(&item).QueueName = q.Name

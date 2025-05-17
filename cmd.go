@@ -38,11 +38,17 @@ func RunCmd() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			queueName := args[0]
+			fmt.Printf("Are you sure, message will not be recieved from '%s' if deleted? (y/N): ", queueName)
+			var response string
+			fmt.Scanln(&response)
+			if response != "y" && response != "Y" {
+				return
+			}
 			err := DeleteQueue(queueName)
 			if err != nil {
 				log.Fatalf("Failed to delete queue: %v", err)
 			}
-			fmt.Printf("Deleted queue: %s\n", queueName)
+			fmt.Printf("Deleted queue %s\n", queueName)
 		},
 	}
 

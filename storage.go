@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -89,7 +88,7 @@ func (ds *DataStorage) DB() *pebble.DB {
 }
 
 func (ds *DataStorage) CreateItemAsync(item Item) error {
-	data, err := json.Marshal(item)
+	data, err := item.Encode()
 	if err != nil {
 		return err
 	}
@@ -98,7 +97,7 @@ func (ds *DataStorage) CreateItemAsync(item Item) error {
 }
 
 func (ds *DataStorage) CreateItemSync(item Item) error {
-	data, err := json.Marshal(item)
+	data, err := item.Encode()
 	if err != nil {
 		return err
 	}
@@ -128,7 +127,7 @@ func (ds *DataStorage) PeekItem() (Item, error) {
 	}
 
 	var item Item
-	if err := json.Unmarshal(iter.Value(), &item); err != nil {
+	if err := item.Decode(iter.Value()); err != nil {
 		return Item{}, err
 	}
 
@@ -206,7 +205,7 @@ func (ds *DataStorage) PeekZombieItem() (Item, error) {
 	}
 
 	var item Item
-	if err := json.Unmarshal(iter.Value(), &item); err != nil {
+	if err := item.Decode(iter.Value()); err != nil {
 		return Item{}, err
 	}
 
@@ -227,7 +226,7 @@ func (ds *DataStorage) ItemsSized(size int) ([]Item, error) {
 	defer it.Close()
 	for it.First(); it.Valid(); it.Next() {
 		var item Item
-		err := json.Unmarshal(it.Value(), &item)
+		err := item.Decode(it.Value())
 		if err != nil {
 			return arr, err
 		}
@@ -265,7 +264,7 @@ func (ds *DataStorage) CreateDead(id int64, data []byte) error {
 }
 
 func (ds *DataStorage) CreateDeadItem(item Item) error {
-	data, err := json.Marshal(item)
+	data, err := item.Encode()
 	if err != nil {
 		return err
 	}
@@ -281,7 +280,7 @@ func (ds *DataStorage) NewBatch() *pebble.Batch {
 	return ds.db.NewBatch()
 }
 func (ds *DataStorage) CreateZombieItem(item Item) error {
-	data, err := json.Marshal(item)
+	data, err := item.Encode()
 	if err != nil {
 		return err
 	}
@@ -294,7 +293,7 @@ func (ds *DataStorage) CreateZombieItem(item Item) error {
 // }
 
 func (ds *DataStorage) BatchCreateZombieItem(batch *pebble.Batch, item Item) error {
-	data, err := json.Marshal(item)
+	data, err := item.Encode()
 	if err != nil {
 		return err
 	}
@@ -313,7 +312,7 @@ func (ds *DataStorage) DeleteZombieItem(item Item) error {
 }
 
 func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error {
-	data, err := json.Marshal(item)
+	data, err := item.Encode()
 	if err != nil {
 		return err
 	}

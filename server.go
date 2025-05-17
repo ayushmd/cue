@@ -43,8 +43,10 @@ func (s *Server) RegisterRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/item/listen/", s.listen)
 	mux.HandleFunc("/item/push", s.pushItem)
-	mux.HandleFunc("/queue/create", s.createQueue)
 	mux.HandleFunc("/item/ack/", s.ack)
+	mux.HandleFunc("/queue/create", s.createQueue)
+	mux.HandleFunc("/queue/list", s.listQueues)
+	mux.HandleFunc("/queue/delete", s.deleteQueue)
 	return mux
 }
 
@@ -83,14 +85,6 @@ func (s *Server) listen(w http.ResponseWriter, r *http.Request) {
 	select {}
 }
 
-type Item struct {
-	Id        int64  `json:"id"`
-	QueueName string `json:"queueName"`
-	Data      any    `json:"data"`
-	TTL       int    `json:"ttl"`
-	Retries   int    `json:"retries"`
-}
-
 func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -111,7 +105,7 @@ func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-type CreateQueueRequest struct {
+type QueueRequest struct {
 	QueueName string `json:"queueName"`
 }
 
@@ -122,7 +116,7 @@ func (s *Server) createQueue(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to read body", http.StatusInternalServerError)
 		return
 	}
-	var data CreateQueueRequest
+	var data QueueRequest
 	if err := json.Unmarshal(body, &data); err != nil {
 		fmt.Println("Failed to parse body")
 		http.Error(w, "Failed to parse body", http.StatusInternalServerError)
@@ -135,6 +129,49 @@ func (s *Server) createQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) deleteQueue(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println("Failed to read body")
+		http.Error(w, "Failed to read body", http.StatusInternalServerError)
+		return
+	}
+	var data QueueRequest
+	if err := json.Unmarshal(body, &data); err != nil {
+		fmt.Println("Failed to parse body")
+		http.Error(w, "Failed to parse body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+	err = s.m.DeleteQueue(data.QueueName)
+	if err != nil {
+		http.Error(w, "Failed to create queue", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+type ListQueueRequest struct {
+	Data    []string `json:"data"`
+	Success bool     `json:"success"`
+}
+
+func (s *Server) listQueues(w http.ResponseWriter, r *http.Request) {
+	qs := s.m.ListQueues()
+	resp, err := json.Marshal(ListQueueRequest{
+		Data:    qs,
+		Success: true,
+	})
+	if err != nil {
+		http.Error(w, "Failed to create queue", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
 }
 
 func (s *Server) ack(w http.ResponseWriter, r *http.Request) {
