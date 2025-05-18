@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/ayushmd/delayedQ/pkg"
 	"github.com/spf13/cobra"
 )
 
@@ -26,10 +27,12 @@ func RunCmd() {
 		Use:   "list",
 		Short: "List all queues",
 		Run: func(cmd *cobra.Command, args []string) {
-			qs, _ := ListAllQueues()
-			for _, q := range qs {
-				fmt.Println(q)
-			}
+			cli := pkg.NewSchedulerClient("http://localhost:8080")
+			cli.ListQueues()
+			// qs, _ := ListAllQueues()
+			// for _, q := range qs {
+			// 	fmt.Println(q)
+			// }
 		},
 	}
 	var deleteQueueCmd = &cobra.Command{
