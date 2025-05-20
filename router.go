@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"regexp"
 	"sync"
 )
@@ -97,21 +95,22 @@ type NotifyRequest struct {
 	Data any   `json:"data"`
 }
 
-func (r *Router) NotifyListener(l Listener, id int64, data any) {
-	flusher, ok := l.w.(http.Flusher)
-	if !ok {
-		http.Error(l.w, "Streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-	sendData, _ := json.Marshal(NotifyRequest{
-		Id:   id,
-		Data: data,
-	})
-	l.w.Header().Set("Content-Type", "application/json")
-	l.w.Header().Set("Cache-Control", "no-cache")
-	fmt.Println("Sending data: ", string(sendData))
-	fmt.Fprintln(l.w, sendData)
-	flusher.Flush()
+func (r *Router) NotifyListener(l Listener, id int64, data []byte) {
+	// flusher, ok := l.w.(http.Flusher)
+	// if !ok {
+	// 	http.Error(l.w, "Streaming unsupported", http.StatusInternalServerError)
+	// 	return
+	// }
+	// sendData, _ := json.Marshal(NotifyRequest{
+	// 	Id:   id,
+	// 	Data: data,
+	// })
+	// l.w.Header().Set("Content-Type", "application/json")
+	// l.w.Header().Set("Cache-Control", "no-cache")
+	// fmt.Println("Sending data: ", string(sendData))
+	// fmt.Fprintln(l.w, sendData)
+	// flusher.Flush()
+	l.send(id, data)
 }
 
 type SentItemResponse struct {
@@ -136,7 +135,9 @@ func (r *Router) SendItem(item Item) []SentItemResponse {
 		} else {
 			q.ind = (q.ind + 1) % len(q.Listeners)
 			l := q.Listeners[q.ind]
-			go r.NotifyListener(l, item.Id, item.Data)
+			// go r.NotifyListener(l, item.Id, item.Data)
+			fmt.Println("Sending data: ", item.Id)
+			go l.send(item.Id, item.Data)
 		}
 	}
 	return arr

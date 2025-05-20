@@ -2,15 +2,14 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/cockroachdb/pebble"
 )
 
 type Listener struct {
-	w  http.ResponseWriter
-	id int
+	send func(id int64, data []byte) error
+	id   int
 }
 
 const ZombieTTL int64 = 5
@@ -64,7 +63,11 @@ func (m *Scheduler) Poll() {
 			fmt.Println("\nPrinting DB:")
 			it, _ := m.ds.db.NewIter(nil)
 			for it.First(); it.Valid(); it.Next() {
-				fmt.Println("Key: ", string(it.Key()), " Value: ", string(it.Value()))
+				if len(it.Value()) > 20 {
+					fmt.Println("Key: ", string(it.Key()), " Value: ", string(it.Value()[:20]))
+				} else {
+					fmt.Println("Key: ", string(it.Key()), " Value: ", string(it.Value()))
+				}
 			}
 		}
 	}
@@ -191,7 +194,7 @@ func (m *Scheduler) CreateQueue(qname string) error {
 	return m.ds.CreateQueue(qname)
 }
 
-func (s *Scheduler) CreateItem(item Item, data []byte) error {
+func (s *Scheduler) CreateItem(item Item) error {
 	if !s.r.CheckExsists(item.QueueName) {
 		return &QueueDoesNotExsists{}
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/ayushmd/delayedQ/pkg"
 	"github.com/spf13/cobra"
@@ -47,11 +48,13 @@ func RunCmd() {
 			if response != "y" && response != "Y" {
 				return
 			}
-			err := DeleteQueue(queueName)
-			if err != nil {
-				log.Fatalf("Failed to delete queue: %v", err)
-			}
-			fmt.Printf("Deleted queue %s\n", queueName)
+			cli := pkg.NewSchedulerClient("http://localhost:8080")
+			cli.DeleteQueue(queueName)
+			// err := DeleteQueue(queueName)
+			// if err != nil {
+			// 	log.Fatalf("Failed to delete queue: %v", err)
+			// }
+			// fmt.Printf("Deleted queue %s\n", queueName)
 		},
 	}
 
@@ -61,11 +64,35 @@ func RunCmd() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			queueName := args[0]
-			err := CreateQueue(queueName)
-			if err != nil {
-				log.Fatalf("Failed to create queue: %v", err)
+			cli := pkg.NewSchedulerClient("http://localhost:8080")
+			cli.InitQueue(queueName)
+			// err := CreateQueue(queueName)
+			// if err != nil {
+			// 	log.Fatalf("Failed to create queue: %v", err)
+			// }
+			// fmt.Printf("Created queue: %s\n", queueName)
+		},
+	}
+
+	var testCmd = &cobra.Command{
+		Use:   "test",
+		Short: "test classic flow",
+		Run: func(cmd *cobra.Command, args []string) {
+			cli := pkg.NewSchedulerClient("http://localhost:8080")
+			cli.InitQueue("test")
+			type TestInput struct {
+				QueueName string `json:"queueName"`
+				Data      string `json:"data"`
+				Ttl       int    `json:"ttl"`
 			}
-			fmt.Printf("Created queue: %s\n", queueName)
+			cli.Send(TestInput{
+				QueueName: "test",
+				Ttl:       int(time.Now().Add(5 * time.Second).UnixMilli()),
+				Data:      "lorem ipsum",
+			})
+			cli.ListenQueue("test", func(message string) {
+				fmt.Println("Recieved message: ", message)
+			})
 		},
 	}
 
@@ -80,6 +107,7 @@ func RunCmd() {
 	queueCmd.AddCommand(createQueueCmd)
 
 	rootCmd.AddCommand(queueCmd)
+	rootCmd.AddCommand(testCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

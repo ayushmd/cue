@@ -1,11 +1,13 @@
 package pkg
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -18,14 +20,19 @@ type SchedulerClient struct {
 }
 
 func NewSchedulerClient(serverURL string) *SchedulerClient {
-	transport := &http2.Transport{
-		// InsecureSkipVerify only for local dev/self-signed certs!
-		AllowHTTP: false,
-	}
+	// transport := &http2.Transport{
+	// 	// InsecureSkipVerify only for local dev/self-signed certs!
+	// 	AllowHTTP: false,
+	// }
 	return &SchedulerClient{
 		baseURL: serverURL,
 		client: &http.Client{
-			Transport: transport,
+			Transport: &http2.Transport{
+				AllowHTTP: true,
+				DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+					return net.Dial(network, addr)
+				},
+			},
 		},
 	}
 }
@@ -41,47 +48,6 @@ func (sc *SchedulerClient) ListenQueue(queueName string, callback func(message s
 
 	go func() {
 		for {
-			resp, err := sc.client.Do(req)
-			if err != nil {
-				log.Println("Error in listen request:", err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			reader := resp.Body
-			defer reader.Close()
-
-			decoder := json.NewDecoder(reader)
-			for {
-				var raw json.RawMessage
-				if err := decoder.Decode(&raw); err != nil {
-					if err == io.EOF {
-						log.Println("Stream closed by server.")
-					} else {
-						log.Println("Decode error:", err)
-					}
-					break
-				}
-
-				var msg map[string]interface{}
-				if err := json.Unmarshal(raw, &msg); err != nil {
-					log.Println("Failed to unmarshal:", err)
-					continue
-				}
-
-				if id, ok := msg["id"].(float64); ok {
-					sc.ack(int(id))
-				}
-
-				if data, ok := msg["data"].(string); ok {
-					callback(data)
-				}
-			}
-		}
-	}()
-
-	go func() {
-		for {
 			time.Sleep(10 * time.Second)
 			req, _ := http.NewRequest("GET", sc.baseURL, nil)
 			req.Header.Set("X-Ping", "keepturn")
@@ -93,18 +59,40 @@ func (sc *SchedulerClient) ListenQueue(queueName string, callback func(message s
 			}
 		}
 	}()
+
+	resp, err := sc.client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("Response status:", resp.Status)
+
+	// Read the response stream line by line
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Println("Received:", string(line))
+	}
+
+	// Handle error if the scanner exits unexpectedly
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Scanner error:", err)
+	} else {
+		fmt.Println("Stream closed by server.")
+	}
 }
 
-func (sc *SchedulerClient) Send(body interface{}) {
-	sc.sendRequestWithBody("/item/push", body)
+func (sc *SchedulerClient) Send(body interface{}) int {
+	return sc.sendRequestWithBody("/item/push", body)
 }
 
-func (sc *SchedulerClient) InitQueue(queueName string) {
-	sc.sendRequestWithBody("/queue/create", map[string]string{"queueName": queueName})
+func (sc *SchedulerClient) InitQueue(queueName string) int {
+	return sc.sendRequestWithBody("/queue/create", map[string]string{"queueName": queueName})
 }
 
-func (sc *SchedulerClient) DeleteQueue(queueName string) {
-	sc.sendRequestWithBody("/queue/delete", map[string]string{"queueName": queueName})
+func (sc *SchedulerClient) DeleteQueue(queueName string) int {
+	return sc.sendRequestWithBody("/queue/delete", map[string]string{"queueName": queueName})
 }
 
 func (sc *SchedulerClient) ListQueues() {
@@ -112,7 +100,7 @@ func (sc *SchedulerClient) ListQueues() {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := sc.client.Do(req)
 	if err != nil {
-		log.Println("ListQueues error:", err)
+		fmt.Println("ListQueues error:", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -132,29 +120,29 @@ func (sc *SchedulerClient) ListQueues() {
 		return
 	}
 
-	log.Println("Queues:")
+	// fmt.Println("Queues:")
 	for _, q := range res.Data {
-		log.Println(q)
+		fmt.Println(q)
 	}
 }
 
-func (sc *SchedulerClient) ack(id int) {
+func (sc *SchedulerClient) ack(id int) int {
 	path := fmt.Sprintf("/item/ack/%d", id)
-	sc.sendRequestWithBody(path, map[string]bool{"acked": true})
+	return sc.sendRequestWithBody(path, map[string]bool{"acked": true})
 }
 
-func (sc *SchedulerClient) sendRequestWithBody(path string, body interface{}) {
+func (sc *SchedulerClient) sendRequestWithBody(path string, body interface{}) int {
 	jsonBytes, err := json.Marshal(body)
 	if err != nil {
 		log.Println("Failed to marshal body:", err)
-		return
+		return 0
 	}
 
 	url := sc.baseURL + path
 	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonBytes))
 	if err != nil {
 		log.Println("Request creation failed:", err)
-		return
+		return 0
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -163,10 +151,11 @@ func (sc *SchedulerClient) sendRequestWithBody(path string, body interface{}) {
 	resp, err := sc.client.Do(req)
 	if err != nil {
 		log.Println("POST failed:", err)
-		return
+		return 0
 	}
 	defer resp.Body.Close()
+	return resp.StatusCode
 
-	data, _ := io.ReadAll(resp.Body)
-	log.Println("Response:", string(data))
+	// data, _ := io.ReadAll(resp.Body)
+	// log.Println("Response:", string(data))
 }

@@ -1,22 +1,24 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"strconv"
-	"strings"
+	"log"
+	"net"
 	"sync"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"google.golang.org/grpc"
+
+	pb "github.com/ayushmd/delayedQ/rpc"
 )
 
 type Server struct {
-	m      *Scheduler
-	mu     sync.Mutex
-	srv    *http.Server
+	pb.UnimplementedSchedulerServiceServer
+	m  *Scheduler
+	mu sync.Mutex
+	// srv    *http.Server
+	grpcs  *grpc.Server
+	lis    net.Listener
 	nextID int
 }
 
@@ -25,162 +27,97 @@ func NewServer() *Server {
 		m:      NewScheduler(),
 		nextID: 0,
 	}
-	mux := s.RegisterRoutes()
-	h2s := &http2.Server{}
-	server := &http.Server{
-		Addr:    ":8080",
-		Handler: h2c.NewHandler(mux, h2s),
+
+	lis, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
 	}
-	s.srv = server
+	grpcs := grpc.NewServer()
+	pb.RegisterSchedulerServiceServer(grpcs, s)
+	log.Printf("server listening at %v", lis.Addr())
+	s.grpcs = grpcs
+	s.lis = lis
+	// mux := s.RegisterRoutes()
+	// h2s := &http2.Server{}
+	// server := &http.Server{
+	// 	Addr:    ":8080",
+	// 	Handler: h2c.NewHandler(mux, h2s),
+	// }
+	// s.srv = server
 	return s
 }
 
 func (s *Server) Start() error {
-	return s.srv.ListenAndServe()
+	return s.grpcs.Serve(s.lis)
 }
 
-func (s *Server) RegisterRoutes() *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/item/listen/", s.listen)
-	mux.HandleFunc("/item/push", s.pushItem)
-	mux.HandleFunc("/item/ack/", s.ack)
-	mux.HandleFunc("/queue/create", s.createQueue)
-	mux.HandleFunc("/queue/list", s.listQueues)
-	mux.HandleFunc("/queue/delete", s.deleteQueue)
-	return mux
-}
-
-func (s *Server) listen(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 4 {
-		http.Error(w, "Queue name missing", http.StatusBadRequest)
-		return
-	}
-	queueName := parts[3]
-
-	ok := s.m.r.CheckExsists(queueName)
-	if !ok {
-		http.Error(w, "No queue found", http.StatusBadRequest)
-		return
-	}
-
+func (s *Server) GetNextID() int {
 	s.mu.Lock()
 	id := s.nextID
 	s.nextID++
 	s.mu.Unlock()
+	return id
+}
 
-	s.m.r.AddListener(queueName, Listener{
-		w:  w,
+func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_ListenServer) error {
+	if !s.m.r.CheckExsists(req.QueueName) {
+		return fmt.Errorf("queue not found")
+	}
+
+	id := s.GetNextID()
+	listener := Listener{
 		id: id,
-	})
+		send: func(id int64, data []byte) error {
+			if len(data) > 20 {
+				fmt.Println("sender ", string(data[:20]))
+			} else {
+				fmt.Println("sender ", data)
+			}
+			return stream.Send(&pb.ItemResponse{
+				Id:      id,
+				Data:    data,
+				Success: true,
+			})
+		},
+	}
 
-	notify := r.Context().Done()
-	go func() {
-		<-notify
-		s.m.r.RemoveListener(queueName, id)
-		fmt.Println("Client disconnected:", id)
-	}()
+	s.m.r.AddListener(req.QueueName, listener)
 
-	// buf := make([]byte, 1024)
-	select {}
+	<-stream.Context().Done()
+
+	s.m.r.RemoveListener(req.QueueName, id)
+	return nil
 }
 
-func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read body", http.StatusInternalServerError)
-		return
+func (s *Server) PushItem(ctx context.Context, in *pb.ItemRequest) (*pb.Response, error) {
+	item := Item{
+		QueueName: in.GetQueueName(),
+		TTL:       in.GetTtl(),
+		Data:      in.GetData(),
 	}
-	var data Item
-	if err := json.Unmarshal(body, &data); err != nil {
-		http.Error(w, "Failed to read body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-	err = s.m.CreateItem(data, body)
-	if err != nil {
-		http.Error(w, "Failed to create", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
+	err := s.m.CreateItem(item)
+	return &pb.Response{Success: err == nil}, err
 }
 
-type QueueRequest struct {
-	QueueName string `json:"queueName"`
+func (s *Server) Ack(ctx context.Context, in *pb.AckRequest) (*pb.Response, error) {
+	s.m.Ack(in.GetId())
+	return &pb.Response{Success: true}, nil
 }
 
-func (s *Server) createQueue(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		fmt.Println("Failed to read body")
-		http.Error(w, "Failed to read body", http.StatusInternalServerError)
-		return
-	}
-	var data QueueRequest
-	if err := json.Unmarshal(body, &data); err != nil {
-		fmt.Println("Failed to parse body")
-		http.Error(w, "Failed to parse body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-	err = s.m.CreateQueue(data.QueueName)
-	if err != nil {
-		http.Error(w, "Failed to create queue", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
+func (s *Server) CreateQueue(ctx context.Context, in *pb.QueueNameRequest) (*pb.Response, error) {
+	err := s.m.CreateQueue(in.QueueName)
+	return &pb.Response{Success: err == nil}, err
 }
 
-func (s *Server) deleteQueue(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		fmt.Println("Failed to read body")
-		http.Error(w, "Failed to read body", http.StatusInternalServerError)
-		return
-	}
-	var data QueueRequest
-	if err := json.Unmarshal(body, &data); err != nil {
-		fmt.Println("Failed to parse body")
-		http.Error(w, "Failed to parse body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-	err = s.m.DeleteQueue(data.QueueName)
-	if err != nil {
-		http.Error(w, "Failed to create queue", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
+func (s *Server) DeleteQueue(ctx context.Context, in *pb.QueueNameRequest) (*pb.Response, error) {
+	err := s.m.DeleteQueue(in.QueueName)
+	return &pb.Response{Success: err == nil}, err
 }
 
-type ListQueueRequest struct {
-	Data    []string `json:"data"`
-	Success bool     `json:"success"`
-}
-
-func (s *Server) listQueues(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListQueues(ctx context.Context, _ *pb.Empty) (*pb.ListQueueResponse, error) {
 	qs := s.m.ListQueues()
-	resp, err := json.Marshal(ListQueueRequest{
+	return &pb.ListQueueResponse{
 		Data:    qs,
 		Success: true,
-	})
-	if err != nil {
-		http.Error(w, "Failed to create queue", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
-}
-
-func (s *Server) ack(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 4 {
-		http.Error(w, "Queue name missing", http.StatusBadRequest)
-		return
-	}
-	ackid := parts[3]
-	num, _ := strconv.ParseInt(ackid, 10, 64)
-	s.m.Ack(num)
+	}, nil
 }

@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option go_package = "github.com/ayushmd/delayedQ/rpc";
+
+service SchedulerService {
+    rpc Listen (QueueNameRequest) returns (stream ItemResponse);
+    rpc PushItem (ItemRequest) returns (Response);
+    rpc Ack (AckRequest) returns (Response);
+    rpc CreateQueue (QueueNameRequest) returns (Response);
+    rpc ListQueues (Empty) returns (ListQueueResponse);
+    rpc DeleteQueue (QueueNameRequest) returns (Response);
+}
+
+message Empty {}
+
+message QueueNameRequest {
+    string QueueName = 1;
+}
+
+message AckRequest {
+    int64 Id = 1;
+}
+
+message Response {
+    bool Success = 1;
+}
+
+message ListQueueResponse {
+    repeated string Data = 1;
+    bool Success = 2;
+}
+
+message ItemRequest {
+    string QueueName = 1;
+    bytes Data = 2;
+    int64 Ttl = 3;
+}
+
+message ItemResponse {
+    int64 id = 1;
+    bytes Data = 2; 
+    bool success = 3;
+}

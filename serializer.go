@@ -8,14 +8,14 @@ import (
 )
 
 type Item struct {
-	Id        int64           `json:"id"`
-	QueueName string          `json:"queueName"`
-	Data      json.RawMessage `json:"data"`
-	TTL       int64           `json:"ttl"`
-	Retries   uint8           `json:"retries"`
+	Id        int64  `json:"id"`
+	QueueName string `json:"queueName"`
+	Data      []byte `json:"data"`
+	TTL       int64  `json:"ttl"`
+	Retries   uint8  `json:"retries"`
 }
 
-const debug = true
+const debug = false
 
 func (i Item) Encode() ([]byte, error) {
 	if debug {
