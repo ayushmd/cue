@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -189,6 +190,10 @@ func (m *Scheduler) PeekZombie() {
 func (m *Scheduler) CreateQueue(qname string) error {
 	err := m.r.CreateQueue(qname)
 	if err != nil {
+		var qe *QueueExsistsError
+		if errors.As(err, &qe) {
+			return nil
+		}
 		return err
 	}
 	return m.ds.CreateQueue(qname)

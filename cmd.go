@@ -10,6 +10,8 @@ import (
 )
 
 func RunCmd() {
+	var addr string
+	serverAddr := fmt.Sprintf("%s:%d", addr, Port)
 	var rootCmd = &cobra.Command{
 		Use:   "sceduler",
 		Short: "scheduler cli",
@@ -28,14 +30,22 @@ func RunCmd() {
 		Use:   "list",
 		Short: "List all queues",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli := pkg.NewSchedulerClient("http://localhost:8080")
-			cli.ListQueues()
+			cli, err := pkg.NewSchedulerClient(serverAddr)
+			if err != nil {
+				fmt.Println("Failed to connect server")
+			}
+			defer cli.Close()
+			qs, err := cli.ListQueues()
+			if err != nil {
+				fmt.Println("Failed to list queues")
+			}
 			// qs, _ := ListAllQueues()
-			// for _, q := range qs {
-			// 	fmt.Println(q)
-			// }
+			for _, q := range qs {
+				fmt.Println(q)
+			}
 		},
 	}
+
 	var deleteQueueCmd = &cobra.Command{
 		Use:   "delete [queue_name]",
 		Short: "Delete a queue by name",
@@ -48,13 +58,15 @@ func RunCmd() {
 			if response != "y" && response != "Y" {
 				return
 			}
-			cli := pkg.NewSchedulerClient("http://localhost:8080")
-			cli.DeleteQueue(queueName)
-			// err := DeleteQueue(queueName)
-			// if err != nil {
-			// 	log.Fatalf("Failed to delete queue: %v", err)
-			// }
-			// fmt.Printf("Deleted queue %s\n", queueName)
+			cli, err := pkg.NewSchedulerClient(serverAddr)
+			if err != nil {
+				fmt.Println("Failed to connect server")
+			}
+			defer cli.Close()
+			err = cli.DeleteQueue(queueName)
+			if err != nil {
+				fmt.Println("Failed to delete queues")
+			}
 		},
 	}
 
@@ -64,13 +76,15 @@ func RunCmd() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			queueName := args[0]
-			cli := pkg.NewSchedulerClient("http://localhost:8080")
-			cli.InitQueue(queueName)
-			// err := CreateQueue(queueName)
-			// if err != nil {
-			// 	log.Fatalf("Failed to create queue: %v", err)
-			// }
-			// fmt.Printf("Created queue: %s\n", queueName)
+			cli, err := pkg.NewSchedulerClient(serverAddr)
+			if err != nil {
+				fmt.Println("Failed to connect to server")
+			}
+			defer cli.Close()
+			err = cli.CreateQueue(queueName)
+			if err != nil {
+				fmt.Println("Failed to create queue")
+			}
 		},
 	}
 
@@ -78,20 +92,20 @@ func RunCmd() {
 		Use:   "test",
 		Short: "test classic flow",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli := pkg.NewSchedulerClient("http://localhost:8080")
-			cli.InitQueue("test")
-			type TestInput struct {
-				QueueName string `json:"queueName"`
-				Data      string `json:"data"`
-				Ttl       int    `json:"ttl"`
+			cli, err := pkg.NewSchedulerClient(serverAddr)
+			if err != nil {
+				fmt.Println("Failed to connect to server")
 			}
-			cli.Send(TestInput{
-				QueueName: "test",
-				Ttl:       int(time.Now().Add(5 * time.Second).UnixMilli()),
-				Data:      "lorem ipsum",
-			})
-			cli.ListenQueue("test", func(message string) {
-				fmt.Println("Recieved message: ", message)
+			err = cli.CreateQueue("test")
+			if err != nil {
+				fmt.Println("Failed to create queue")
+			}
+			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().Add(5*time.Second).UnixMilli())
+			if err != nil {
+				fmt.Println("Failed to create item")
+			}
+			cli.Listen("test", func(message []byte) {
+				fmt.Println("Recieved message: ", string(message))
 			})
 		},
 	}
@@ -106,6 +120,7 @@ func RunCmd() {
 	queueCmd.AddCommand(deleteQueueCmd)
 	queueCmd.AddCommand(createQueueCmd)
 
+	rootCmd.Flags().StringVarP(&addr, "addr", "a", "localhost:8080", "gRPC server address")
 	rootCmd.AddCommand(queueCmd)
 	rootCmd.AddCommand(testCmd)
 

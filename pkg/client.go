@@ -1,161 +1,111 @@
 package pkg
 
 import (
-	"bufio"
-	"bytes"
-	"crypto/tls"
-	"encoding/json"
+	"context"
 	"fmt"
+	"io"
 	"log"
-	"net"
-	"net/http"
-	"time"
 
-	"golang.org/x/net/http2"
+	pb "github.com/ayushmd/delayedQ/rpc"
+	"google.golang.org/grpc"
 )
 
 type SchedulerClient struct {
-	baseURL string
-	client  *http.Client
+	conn   *grpc.ClientConn
+	client pb.SchedulerServiceClient
 }
 
-func NewSchedulerClient(serverURL string) *SchedulerClient {
-	// transport := &http2.Transport{
-	// 	// InsecureSkipVerify only for local dev/self-signed certs!
-	// 	AllowHTTP: false,
-	// }
+func NewSchedulerClient(addr string) (*SchedulerClient, error) {
+	conn, err := grpc.Dial(addr, grpc.WithInsecure()) // Use credentials for production
+	if err != nil {
+		return nil, err
+	}
+
 	return &SchedulerClient{
-		baseURL: serverURL,
-		client: &http.Client{
-			Transport: &http2.Transport{
-				AllowHTTP: true,
-				DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-					return net.Dial(network, addr)
-				},
-			},
-		},
-	}
+		conn:   conn,
+		client: pb.NewSchedulerServiceClient(conn),
+	}, nil
 }
 
-func (sc *SchedulerClient) ListenQueue(queueName string, callback func(message string)) {
-	url := fmt.Sprintf("%s/item/listen/%s", sc.baseURL, queueName)
+func (sc *SchedulerClient) Close() error {
+	return sc.conn.Close()
+}
 
-	req, err := http.NewRequest("GET", url, nil)
+func (sc *SchedulerClient) CreateQueue(name string) error {
+	res, err := sc.client.CreateQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
 	if err != nil {
-		log.Println("Failed to create request:", err)
-		return
+		return err
+	}
+	fmt.Println("CreateQueue success:", res.Success)
+	return nil
+}
+
+func (sc *SchedulerClient) PushItem(queueName string, data []byte, ttl int64) error {
+	res, err := sc.client.PushItem(context.Background(), &pb.ItemRequest{
+		QueueName: queueName,
+		Data:      data,
+		Ttl:       ttl,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println("PushItem success:", res.Success)
+	return nil
+}
+
+func (sc *SchedulerClient) Listen(queueName string, handle func(data []byte)) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stream, err := sc.client.Listen(ctx, &pb.QueueNameRequest{QueueName: queueName})
+	if err != nil {
+		return err
 	}
 
-	go func() {
-		for {
-			time.Sleep(10 * time.Second)
-			req, _ := http.NewRequest("GET", sc.baseURL, nil)
-			req.Header.Set("X-Ping", "keepturn")
-			_, err := sc.client.Do(req)
-			if err != nil {
-				log.Println("Ping failed:", err)
-			} else {
-				log.Println("Ping successful")
-			}
+	fmt.Println("Listening for items...")
+	for {
+		item, err := stream.Recv()
+		if err == io.EOF {
+			break
 		}
-	}()
+		if err != nil {
+			return err
+		}
 
-	resp, err := sc.client.Do(req)
+		fmt.Printf("Received Item: ID=%d, Data=%s, Success=%v\n", item.Id, string(item.Data), item.Success)
+		handle(item.Data)
+
+		// Ack after handling
+		if err := sc.Ack(item.Id); err != nil {
+			log.Printf("Ack error: %v", err)
+		}
+	}
+	return nil
+}
+
+func (sc *SchedulerClient) Ack(id int64) error {
+	res, err := sc.client.Ack(context.Background(), &pb.AckRequest{Id: id})
 	if err != nil {
-		panic(err)
+		return err
 	}
-	defer resp.Body.Close()
-
-	fmt.Println("Response status:", resp.Status)
-
-	// Read the response stream line by line
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		line := scanner.Text()
-		fmt.Println("Received:", string(line))
-	}
-
-	// Handle error if the scanner exits unexpectedly
-	if err := scanner.Err(); err != nil {
-		fmt.Println("Scanner error:", err)
-	} else {
-		fmt.Println("Stream closed by server.")
-	}
+	fmt.Printf("Ack ID=%d, success=%v\n", id, res.Success)
+	return nil
 }
 
-func (sc *SchedulerClient) Send(body interface{}) int {
-	return sc.sendRequestWithBody("/item/push", body)
-}
-
-func (sc *SchedulerClient) InitQueue(queueName string) int {
-	return sc.sendRequestWithBody("/queue/create", map[string]string{"queueName": queueName})
-}
-
-func (sc *SchedulerClient) DeleteQueue(queueName string) int {
-	return sc.sendRequestWithBody("/queue/delete", map[string]string{"queueName": queueName})
-}
-
-func (sc *SchedulerClient) ListQueues() {
-	url := sc.baseURL + "/queue/list"
-	req, _ := http.NewRequest("GET", url, nil)
-	resp, err := sc.client.Do(req)
+func (sc *SchedulerClient) ListQueues() ([]string, error) {
+	res, err := sc.client.ListQueues(context.Background(), &pb.Empty{})
 	if err != nil {
-		fmt.Println("ListQueues error:", err)
-		return
+		return nil, err
 	}
-	defer resp.Body.Close()
-
-	var res struct {
-		Data    []string `json:"data"`
-		Success bool     `json:"success"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		log.Println("Failed to parse list response:", err)
-		return
-	}
-
-	if !res.Success {
-		log.Println("ListQueues: server reported failure")
-		return
-	}
-
-	// fmt.Println("Queues:")
-	for _, q := range res.Data {
-		fmt.Println(q)
-	}
+	fmt.Println("Queues:", res.Data, "Success:", res.Success)
+	return res.Data, nil
 }
 
-func (sc *SchedulerClient) ack(id int) int {
-	path := fmt.Sprintf("/item/ack/%d", id)
-	return sc.sendRequestWithBody(path, map[string]bool{"acked": true})
-}
-
-func (sc *SchedulerClient) sendRequestWithBody(path string, body interface{}) int {
-	jsonBytes, err := json.Marshal(body)
+func (sc *SchedulerClient) DeleteQueue(name string) error {
+	res, err := sc.client.DeleteQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
 	if err != nil {
-		log.Println("Failed to marshal body:", err)
-		return 0
+		return err
 	}
-
-	url := sc.baseURL + path
-	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonBytes))
-	if err != nil {
-		log.Println("Request creation failed:", err)
-		return 0
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.ContentLength = int64(len(jsonBytes))
-
-	resp, err := sc.client.Do(req)
-	if err != nil {
-		log.Println("POST failed:", err)
-		return 0
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode
-
-	// data, _ := io.ReadAll(resp.Body)
-	// log.Println("Response:", string(data))
+	fmt.Println("DeleteQueue success:", res.Success)
+	return nil
 }

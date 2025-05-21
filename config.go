@@ -15,3 +15,5 @@ const MaxZombiefiedRetries = 2
 
 // The time after which the retry is performed
 const RetryAfterTimeout = 10
+
+const Port = 8080
