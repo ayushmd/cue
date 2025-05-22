@@ -57,8 +57,8 @@ func NewDataStorage() *DataStorage {
 	return ds
 }
 
-func (ds *DataStorage) GetQueues() ([][]byte, error) {
-	arr := make([][]byte, 0)
+func (ds *DataStorage) GetQueues() ([]string, error) {
+	arr := make([]string, 0)
 	it, err := ds.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte(fmt.Sprintf("%s:0", QPrefix)),
 		UpperBound: []byte(fmt.Sprintf("%s:z", QPrefix)),
@@ -68,7 +68,7 @@ func (ds *DataStorage) GetQueues() ([][]byte, error) {
 	}
 	defer it.Close()
 	for it.First(); it.Valid(); it.Next() {
-		arr = append(arr, it.Value())
+		arr = append(arr, string(it.Value()))
 	}
 	return arr, nil
 }

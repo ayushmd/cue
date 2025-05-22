@@ -40,8 +40,13 @@ func RunCmd() {
 				fmt.Println("Failed to list queues")
 			}
 			// qs, _ := ListAllQueues()
-			for _, q := range qs {
-				fmt.Println(q)
+			if len(qs) == 0 {
+				fmt.Println("No queue's found")
+			} else {
+				fmt.Println("Queue:")
+				for _, q := range qs {
+					fmt.Println(q)
+				}
 			}
 		},
 	}
@@ -65,7 +70,9 @@ func RunCmd() {
 			defer cli.Close()
 			err = cli.DeleteQueue(queueName)
 			if err != nil {
-				fmt.Println("Failed to delete queues")
+				fmt.Println("Queue does not exsists")
+			} else {
+				fmt.Println("Deleted queue")
 			}
 		},
 	}
@@ -84,6 +91,8 @@ func RunCmd() {
 			err = cli.CreateQueue(queueName)
 			if err != nil {
 				fmt.Println("Failed to create queue")
+			} else {
+				fmt.Println("Created queue")
 			}
 		},
 	}

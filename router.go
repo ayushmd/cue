@@ -44,6 +44,14 @@ func (r *Router) CheckExsists(pattern string) bool {
 	return false
 }
 
+func (r *Router) initQueues(qs []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, q := range qs {
+		r.queues[q] = NewQueue(q)
+	}
+}
+
 func (r *Router) CreateQueue(qname string) error {
 	if r.CheckExsists(qname) {
 		return &QueueExsistsError{}
@@ -63,6 +71,16 @@ func (r *Router) DeleteQueue(qname string) error {
 	defer r.mu.Unlock()
 	delete(r.queues, qname)
 	return nil
+}
+
+func (r *Router) ListQueues() []string {
+	arr := make([]string, 0)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, q := range r.queues {
+		arr = append(arr, q.Name)
+	}
+	return arr
 }
 
 func (r *Router) AddListener(qname string, l Listener) {

@@ -32,11 +32,10 @@ func (sc *SchedulerClient) Close() error {
 }
 
 func (sc *SchedulerClient) CreateQueue(name string) error {
-	res, err := sc.client.CreateQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
+	_, err := sc.client.CreateQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
 	if err != nil {
 		return err
 	}
-	fmt.Println("CreateQueue success:", res.Success)
 	return nil
 }
 
@@ -97,15 +96,14 @@ func (sc *SchedulerClient) ListQueues() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Queues:", res.Data, "Success:", res.Success)
+	// fmt.Println("Queues:", res.Data, "Success:", res.Success)
 	return res.Data, nil
 }
 
 func (sc *SchedulerClient) DeleteQueue(name string) error {
-	res, err := sc.client.DeleteQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
+	_, err := sc.client.DeleteQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
 	if err != nil {
 		return err
 	}
-	fmt.Println("DeleteQueue success:", res.Success)
 	return nil
 }

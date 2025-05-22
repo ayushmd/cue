@@ -31,6 +31,10 @@ func NewScheduler() *Scheduler {
 		r:  NewRouter(),
 		ch: make(chan Item, 1000),
 	}
+	qs, err := m.ds.GetQueues()
+	if err == nil {
+		m.r.initQueues(qs)
+	}
 	go m.Sender()
 	go m.Poll()
 	return m
@@ -226,15 +230,10 @@ func (s *Scheduler) Ack(id int64) {
 }
 
 func (s *Scheduler) ListQueues() []string {
-	arr := make([]string, 0)
-	for _, q := range s.r.queues {
-		arr = append(arr, q.Name)
-	}
-	return arr
+	return s.r.ListQueues()
 }
 
 func (s *Scheduler) CheckItemQueue() {
-
 }
 
 func (s *Scheduler) DeleteQueue(qname string) error {
