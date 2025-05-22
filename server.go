@@ -68,11 +68,6 @@ func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_Lis
 	listener := Listener{
 		id: id,
 		send: func(id int64, data []byte) error {
-			if len(data) > 20 {
-				fmt.Println("sender ", string(data[:20]))
-			} else {
-				fmt.Println("sender ", data)
-			}
 			return stream.Send(&pb.ItemResponse{
 				Id:      id,
 				Data:    data,

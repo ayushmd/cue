@@ -105,17 +105,23 @@ func RunCmd() {
 			if err != nil {
 				fmt.Println("Failed to connect to server")
 			}
+			// defer cli.Close()
 			err = cli.CreateQueue("test")
 			if err != nil {
 				fmt.Println("Failed to create queue")
 			}
-			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().Add(5*time.Second).UnixMilli())
+			go func() {
+				cli.Listen("test", func(message []byte) {
+					fmt.Println("Recieved message: ", string(message), time.Now().UnixMilli())
+				})
+			}()
+			time.Sleep(1 * time.Second)
+			fmt.Println("Sending at: ", time.Now().UnixMilli())
+			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().UnixMilli())
 			if err != nil {
 				fmt.Println("Failed to create item")
 			}
-			cli.Listen("test", func(message []byte) {
-				fmt.Println("Recieved message: ", string(message))
-			})
+			select {}
 		},
 	}
 

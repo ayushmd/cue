@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"regexp"
 	"sync"
 )
@@ -153,8 +152,6 @@ func (r *Router) SendItem(item Item) []SentItemResponse {
 		} else {
 			q.ind = (q.ind + 1) % len(q.Listeners)
 			l := q.Listeners[q.ind]
-			// go r.NotifyListener(l, item.Id, item.Data)
-			fmt.Println("Sending data: ", item.Id)
 			go l.send(item.Id, item.Data)
 		}
 	}

@@ -44,8 +44,8 @@ type ZombifiedItem struct {
 }
 
 func (s *Scheduler) Sender() {
-	for i := range s.ch {
-		go s.ConsumeItem(i)
+	for item := range s.ch {
+		go s.InstantConsume(item)
 	}
 }
 
@@ -62,7 +62,6 @@ func (m *Scheduler) Poll() {
 			m.PeekZombie()
 		case job := <-m.pq.Subscribe():
 			item := job.(Item)
-			// go m.ConsumeItem(job.(Item))
 			go m.r.SendItem(item)
 		case <-lister.C:
 			fmt.Println("\nPrinting DB:")
@@ -95,6 +94,12 @@ func (s *Scheduler) Retry(b *pebble.Batch, acked bool, item Item) {
 		(&item).TTL = time.Now().Add(5 * time.Second).UnixMilli()
 		s.ds.BatchCreateZombieItem(b, item)
 	}
+}
+
+func (s *Scheduler) InstantConsume(item Item) {
+	(&item).Retries = MaxZombiefiedRetries
+	s.ds.CreateZombieItem(item)
+	s.r.SendItem(item)
 }
 
 func (s *Scheduler) ConsumeItem(item Item) {
@@ -161,7 +166,6 @@ func (m *Scheduler) PutToPQ() {
 		if err := b.Commit(pebble.Sync); err != nil {
 			fmt.Println("Error in commiting")
 		}
-		// m.ds.DeleteItemRange(int64(items[0].TTL), int64(items[len(items)-1].TTL))
 		b.Close()
 	}
 }
@@ -209,8 +213,7 @@ func (s *Scheduler) CreateItem(item Item) error {
 	}
 	now := time.Now().UnixMilli()
 	item.Id = now
-	if int64(item.TTL) < now {
-		(&item).Retries = MaxZombiefiedRetries
+	if int64(item.TTL) <= now {
 		s.ch <- item
 		return nil
 	} else if int64(item.TTL)-now <= PriorityQMainQDiff {
