@@ -97,8 +97,6 @@ func (s *Scheduler) Retry(b *pebble.Batch, acked bool, item Item) {
 }
 
 func (s *Scheduler) InstantConsume(item Item) {
-	(&item).Retries = MaxZombiefiedRetries
-	s.ds.CreateZombieItem(item)
 	s.r.SendItem(item)
 }
 
@@ -116,6 +114,7 @@ func (s *Scheduler) ConsumeItem(item Item) {
 		b := s.ds.NewBatch()
 		defer b.Close()
 		if len(arr) == 0 || IsNoneSend(arr) {
+			// fmt.Println("Retrying ", arr)
 			s.Retry(b, exsists, item)
 		}
 		if ZombieWhenAllPatternNotMatch {
@@ -126,34 +125,39 @@ func (s *Scheduler) ConsumeItem(item Item) {
 				}
 			}
 		}
-		err := b.Commit(pebble.Sync)
+		err := b.Commit(pebble.NoSync)
 		if err != nil {
 			fmt.Println("Failed to commit")
 		}
 	}
 }
 
-func (m *Scheduler) PopItem(b *pebble.Batch, item Item) {
+func (m *Scheduler) PopItem(b *pebble.Batch, item Item, exsists bool) {
 	m.pq.Push(item, int64(item.TTL))
-	m.ds.BatchDeleteItem(b, item)
-	(&item).Retries = MaxZombiefiedRetries
-	ttlTime := time.UnixMilli(int64(item.TTL))
+	if exsists {
+		m.ds.BatchDeleteItem(b, item)
+	}
+	ttlTime := time.UnixMilli(item.TTL)
 	delta := time.Until(ttlTime)
 	addup := time.Now().Add(5 * time.Second)
 	if delta > 0 {
 		addup = addup.Add(delta)
 	}
-	fmt.Println("Times ttl: ", ttlTime, "Delta: ", delta, "Addup: ", addup, addup.UnixMilli())
 	(&item).TTL = addup.UnixMilli()
-	qs := m.r.GetMatchingQueues(item.QueueName)
+	m.ZombifyAllMatching(b, item)
+}
+
+func (s *Scheduler) ZombifyAllMatching(b *pebble.Batch, item Item) {
+	(&item).Retries = MaxZombiefiedRetries
+	qs := s.r.GetMatchingQueues(item.QueueName)
 	for _, q := range qs {
 		(&item).QueueName = q.Name
-		m.ds.BatchCreateZombieItem(b, item)
+		s.ds.BatchCreateZombieItem(b, item)
 	}
 }
 
 func (m *Scheduler) PutToPQ() {
-	defer m.ds.Unlock()
+	// defer m.ds.Unlock()
 	items, err := m.ds.ItemsSized(10)
 	if err != nil {
 		fmt.Println(err)
@@ -161,9 +165,9 @@ func (m *Scheduler) PutToPQ() {
 	if len(items) != 0 {
 		b := m.ds.NewBatch()
 		for _, item := range items {
-			m.PopItem(b, item)
+			m.PopItem(b, item, true)
 		}
-		if err := b.Commit(pebble.Sync); err != nil {
+		if err := b.Commit(pebble.NoSync); err != nil {
 			fmt.Println("Error in commiting")
 		}
 		b.Close()
@@ -174,11 +178,11 @@ func (m *Scheduler) Peek() {
 	now := time.Now().UnixMilli()
 	top, _ := m.ds.PeekTTL()
 	if now >= top && top != 0 {
-		if m.ds.TryLock() {
-			go m.PutToPQ()
-		} else {
-			fmt.Println("Already running")
-		}
+		// if m.ds.TryLock() {
+		m.PutToPQ()
+		// } else {
+		// 	fmt.Println("Already running")
+		// }
 	}
 }
 
@@ -215,12 +219,18 @@ func (s *Scheduler) CreateItem(item Item) error {
 	item.Id = now
 	if int64(item.TTL) <= now {
 		s.ch <- item
+		b := s.ds.NewBatch()
+		defer b.Close()
+		s.ZombifyAllMatching(b, item)
+		if err := b.Commit(pebble.NoSync); err != nil {
+			fmt.Println("Failed to commit")
+		}
 		return nil
 	} else if int64(item.TTL)-now <= PriorityQMainQDiff {
 		b := s.ds.NewBatch()
 		defer b.Close()
-		s.PopItem(b, item)
-		if err := b.Commit(pebble.Sync); err != nil {
+		s.PopItem(b, item, false)
+		if err := b.Commit(pebble.NoSync); err != nil {
 			fmt.Println("Failed to commit: ", err)
 		}
 		return nil
@@ -228,15 +238,12 @@ func (s *Scheduler) CreateItem(item Item) error {
 	return s.ds.CreateItemSync(item)
 }
 
-func (s *Scheduler) Ack(id int64) {
-	s.ds.CreateAck(id)
+func (s *Scheduler) Ack(id int64) error {
+	return s.ds.CreateAck(id)
 }
 
 func (s *Scheduler) ListQueues() []string {
 	return s.r.ListQueues()
-}
-
-func (s *Scheduler) CheckItemQueue() {
 }
 
 func (s *Scheduler) DeleteQueue(qname string) error {

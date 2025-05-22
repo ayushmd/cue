@@ -117,7 +117,7 @@ func RunCmd() {
 			}()
 			time.Sleep(1 * time.Second)
 			fmt.Println("Sending at: ", time.Now().UnixMilli())
-			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().UnixMilli())
+			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().Add(5*time.Second).UnixMilli())
 			if err != nil {
 				fmt.Println("Failed to create item")
 			}
