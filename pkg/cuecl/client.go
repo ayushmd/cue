@@ -1,13 +1,13 @@
-package pkg
+package cuecl
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 
 	pb "github.com/ayushmd/delayedQ/rpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type SchedulerClient struct {
@@ -16,7 +16,9 @@ type SchedulerClient struct {
 }
 
 func NewSchedulerClient(addr string) (*SchedulerClient, error) {
-	conn, err := grpc.Dial(addr, grpc.WithInsecure()) // Use credentials for production
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -52,34 +54,45 @@ func (sc *SchedulerClient) PushItem(queueName string, data []byte, ttl int64) er
 	return nil
 }
 
-func (sc *SchedulerClient) Listen(queueName string, handle func(data []byte)) error {
+func (sc *SchedulerClient) Listen(queueName string) (chan []byte, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// defer cancel()
 
 	stream, err := sc.client.Listen(ctx, &pb.QueueNameRequest{QueueName: queueName})
 	if err != nil {
-		return err
+		cancel()
+		return nil, err
 	}
 
-	fmt.Println("Listening for items...")
-	for {
-		item, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
+	ch := make(chan []byte, 1000)
+	ackch := make(chan int64, 1000)
 
-		fmt.Printf("Received Item: ID=%d, Data=%s, Success=%v\n", item.Id, string(item.Data), item.Success)
-		handle(item.Data)
-
-		// Ack after handling
-		if err := sc.Ack(item.Id); err != nil {
-			log.Printf("Ack error: %v", err)
+	go func() {
+		for ackid := range ackch {
+			sc.Ack(ackid)
 		}
-	}
-	return nil
+	}()
+
+	// fmt.Println("Listening for items...")
+	go func() {
+		defer func() {
+			cancel()
+			close(ch)
+			close(ackch)
+		}()
+		for {
+			item, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return
+			}
+			ch <- item.Data
+			ackch <- item.Id
+		}
+	}()
+	return ch, nil
 }
 
 func (sc *SchedulerClient) Ack(id int64) error {

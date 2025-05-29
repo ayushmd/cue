@@ -47,6 +47,10 @@ func NewServer() *Server {
 	return s
 }
 
+func (s *Server) Cleanup() {
+	s.m.Close()
+}
+
 func (s *Server) Start() error {
 	return s.grpcs.Serve(s.lis)
 }
@@ -68,6 +72,7 @@ func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_Lis
 	listener := Listener{
 		id: id,
 		send: func(id int64, data []byte) error {
+			fmt.Println("Sending out: ", string(data))
 			return stream.Send(&pb.ItemResponse{
 				Id:      id,
 				Data:    data,
@@ -75,11 +80,12 @@ func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_Lis
 			})
 		},
 	}
-
+	fmt.Println("Adding listener to: ", req.QueueName, listener.id)
 	s.m.r.AddListener(req.QueueName, listener)
 
 	<-stream.Context().Done()
 
+	fmt.Println("Removing listener to: ", req.QueueName, listener.id)
 	s.m.r.RemoveListener(req.QueueName, id)
 	return nil
 }

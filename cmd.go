@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/ayushmd/delayedQ/pkg"
+	"github.com/ayushmd/delayedQ/pkg/cuecl"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,7 @@ func RunCmd() {
 		Use:   "list",
 		Short: "List all queues",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli, err := pkg.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewSchedulerClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect server")
 			}
@@ -63,7 +63,7 @@ func RunCmd() {
 			if response != "y" && response != "Y" {
 				return
 			}
-			cli, err := pkg.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewSchedulerClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect server")
 			}
@@ -83,7 +83,7 @@ func RunCmd() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			queueName := args[0]
-			cli, err := pkg.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewSchedulerClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect to server")
 			}
@@ -101,7 +101,7 @@ func RunCmd() {
 		Use:   "test",
 		Short: "test classic flow",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli, err := pkg.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewSchedulerClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect to server")
 			}
@@ -110,18 +110,19 @@ func RunCmd() {
 			if err != nil {
 				fmt.Println("Failed to create queue")
 			}
-			go func() {
-				cli.Listen("test", func(message []byte) {
-					fmt.Println("Recieved message: ", string(message), time.Now().UnixMilli())
-				})
-			}()
+			// ch, err := cli.Listen("test")
+			// if err != nil {
+			// 	fmt.Println("Failed to create Listen")
+			// }
 			time.Sleep(1 * time.Second)
 			fmt.Println("Sending at: ", time.Now().UnixMilli())
-			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().Add(5*time.Second).UnixMilli())
+			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().Add(100*time.Millisecond).UnixMilli())
 			if err != nil {
 				fmt.Println("Failed to create item")
 			}
-			select {}
+			// for item := range ch {
+			// 	fmt.Println("Recieved Item: ", string(item), time.Now().UnixMilli())
+			// }
 		},
 	}
 

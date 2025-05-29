@@ -6,6 +6,7 @@ toolchain go1.24.3
 
 require (
 	github.com/cockroachdb/pebble v1.1.5
+	github.com/panjf2000/ants v1.3.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.72.1

@@ -1,18 +1,25 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
 	"sync"
+
+	"github.com/panjf2000/ants"
 )
 
 type Router struct {
 	mu     sync.RWMutex
 	queues map[string]*Queue
+	pool   *ants.Pool
 }
 
 func NewRouter() *Router {
+	p, _ := ants.NewPool(5000)
+	// defer pool.Release()
 	return &Router{
 		queues: make(map[string]*Queue),
+		pool:   p,
 	}
 }
 
@@ -28,6 +35,10 @@ func (r *Router) GetMatchingQueues(pattern string) []*Queue {
 		}
 	}
 	return arr
+}
+
+func (r *Router) Close() {
+	r.pool.Release()
 }
 
 func (r *Router) CheckExsists(pattern string) bool {
@@ -141,10 +152,11 @@ func (r *Router) SendItem(item Item) []SentItemResponse {
 	if len(qs) == 0 {
 		return arr
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	for _, q := range qs {
 		if len(q.Listeners) == 0 {
+			fmt.Println("listeners available: ", len(q.Listeners))
 			arr = append(arr, SentItemResponse{
 				queueName: q.Name,
 				sent:      false,
@@ -152,7 +164,9 @@ func (r *Router) SendItem(item Item) []SentItemResponse {
 		} else {
 			q.ind = (q.ind + 1) % len(q.Listeners)
 			l := q.Listeners[q.ind]
-			go l.send(item.Id, item.Data)
+			_ = r.pool.Submit(func() {
+				l.send(item.Id, item.Data)
+			})
 		}
 	}
 	return arr

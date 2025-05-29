@@ -35,46 +35,73 @@ func NewScheduler() *Scheduler {
 	if err == nil {
 		m.r.initQueues(qs)
 	}
-	go m.Sender()
-	go m.Poll()
+	m.Poll()
 	return m
 }
 
 type ZombifiedItem struct {
 }
 
-func (s *Scheduler) Sender() {
+func (s *Scheduler) Close() {
+	s.ds.db.Close()
+	s.r.Close()
+}
+
+func (s *Scheduler) poolInstant() {
 	for item := range s.ch {
-		go s.InstantConsume(item)
+		s.r.SendItem(item)
+	}
+}
+
+func (m *Scheduler) poolItems() {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		m.Peek()
+	}
+}
+
+func (m *Scheduler) poolZombie() {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		m.PeekZombie()
+	}
+}
+
+func (m *Scheduler) listDb() {
+	ticker := time.NewTicker(7 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		fmt.Println("\nPrinting DB:")
+		it, _ := m.ds.db.NewIter(nil)
+		for it.First(); it.Valid(); it.Next() {
+			val := it.Value()
+			if len(val) > 20 {
+				fmt.Printf("Key: %s, Value: %s...\n", it.Key(), val[:20])
+			} else {
+				fmt.Printf("Key: %s, Value: %s\n", it.Key(), val)
+			}
+		}
+	}
+}
+
+func (m *Scheduler) poolPriorityQueue() {
+	for job := range m.pq.Subscribe() {
+		item := job.(Item)
+		m.r.SendItem(item)
 	}
 }
 
 func (m *Scheduler) Poll() {
-	it := time.NewTicker(500 * time.Millisecond)
-	zit := time.NewTicker(500 * time.Millisecond)
-	lister := time.NewTicker(10 * time.Second)
-
-	for {
-		select {
-		case <-it.C:
-			m.Peek()
-		case <-zit.C:
-			m.PeekZombie()
-		case job := <-m.pq.Subscribe():
-			item := job.(Item)
-			go m.r.SendItem(item)
-		case <-lister.C:
-			fmt.Println("\nPrinting DB:")
-			it, _ := m.ds.db.NewIter(nil)
-			for it.First(); it.Valid(); it.Next() {
-				if len(it.Value()) > 20 {
-					fmt.Println("Key: ", string(it.Key()), " Value: ", string(it.Value()[:20]))
-				} else {
-					fmt.Println("Key: ", string(it.Key()), " Value: ", string(it.Value()))
-				}
-			}
-		}
-	}
+	go m.poolItems()
+	go m.poolZombie()
+	go m.poolPriorityQueue()
+	go m.poolInstant()
+	go m.listDb()
 }
 
 func IsNoneSend(arr []SentItemResponse) bool {
@@ -125,7 +152,7 @@ func (s *Scheduler) ConsumeItem(item Item) {
 				}
 			}
 		}
-		err := b.Commit(pebble.NoSync)
+		err := b.Commit(pebble.Sync)
 		if err != nil {
 			fmt.Println("Failed to commit")
 		}
@@ -167,7 +194,7 @@ func (m *Scheduler) PutToPQ() {
 		for _, item := range items {
 			m.PopItem(b, item, true)
 		}
-		if err := b.Commit(pebble.NoSync); err != nil {
+		if err := b.Commit(pebble.Sync); err != nil {
 			fmt.Println("Error in commiting")
 		}
 		b.Close()
@@ -222,7 +249,7 @@ func (s *Scheduler) CreateItem(item Item) error {
 		b := s.ds.NewBatch()
 		defer b.Close()
 		s.ZombifyAllMatching(b, item)
-		if err := b.Commit(pebble.NoSync); err != nil {
+		if err := b.Commit(pebble.Sync); err != nil {
 			fmt.Println("Failed to commit")
 		}
 		return nil
@@ -230,7 +257,7 @@ func (s *Scheduler) CreateItem(item Item) error {
 		b := s.ds.NewBatch()
 		defer b.Close()
 		s.PopItem(b, item, false)
-		if err := b.Commit(pebble.NoSync); err != nil {
+		if err := b.Commit(pebble.Sync); err != nil {
 			fmt.Println("Failed to commit: ", err)
 		}
 		return nil
