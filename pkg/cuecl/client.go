@@ -96,11 +96,10 @@ func (sc *SchedulerClient) Listen(queueName string) (chan []byte, error) {
 }
 
 func (sc *SchedulerClient) Ack(id int64) error {
-	res, err := sc.client.Ack(context.Background(), &pb.AckRequest{Id: id})
+	_, err := sc.client.Ack(context.Background(), &pb.AckRequest{Id: id})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Ack ID=%d, success=%v\n", id, res.Success)
 	return nil
 }
 

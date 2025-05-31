@@ -21,7 +21,17 @@ type Scheduler struct {
 	pq *PriorityQueue
 	zq *PriorityQueue
 	ch chan Item
+
+	itemTick *time.Ticker
+	itemInd  int
+	zomTick  *time.Ticker
+	zomInd   int
+
+	cleaning bool
 }
+
+var poolTime []int64 = []int64{30, 60, 600, 3600, 7200}   // in sec
+var peekTime []int64 = []int64{50, 100, 1000, 5000, 8000} // in ms
 
 func NewScheduler() *Scheduler {
 	m := &Scheduler{
@@ -30,6 +40,13 @@ func NewScheduler() *Scheduler {
 		zq: NewPriorityQueue(),
 		r:  NewRouter(),
 		ch: make(chan Item, 1000),
+
+		itemTick: time.NewTicker(50 * time.Millisecond),
+		itemInd:  0,
+		zomTick:  time.NewTicker(500 * time.Millisecond),
+		zomInd:   0,
+
+		cleaning: false,
 	}
 	qs, err := m.ds.GetQueues()
 	if err == nil {
@@ -54,19 +71,19 @@ func (s *Scheduler) poolInstant() {
 }
 
 func (m *Scheduler) poolItems() {
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
+	// ticker := time.NewTicker(50 * time.Millisecond)
+	defer m.itemTick.Stop()
 
-	for range ticker.C {
+	for range m.itemTick.C {
 		m.Peek()
 	}
 }
 
 func (m *Scheduler) poolZombie() {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	// ticker := time.NewTicker(500 * time.Millisecond)
+	defer m.zomTick.Stop()
 
-	for range ticker.C {
+	for range m.zomTick.C {
 		m.PeekZombie()
 	}
 }
@@ -101,7 +118,9 @@ func (m *Scheduler) Poll() {
 	go m.poolZombie()
 	go m.poolPriorityQueue()
 	go m.poolInstant()
-	go m.listDb()
+	if debug {
+		go m.listDb()
+	}
 }
 
 func IsNoneSend(arr []SentItemResponse) bool {
@@ -201,16 +220,49 @@ func (m *Scheduler) PutToPQ() {
 	}
 }
 
+func (s *Scheduler) ItemBackoff(top int64) {
+	now := time.Now().UnixMilli()
+	if top > now {
+		diff := top - now
+		if diff > poolTime[s.itemInd] {
+			// inc
+			if s.itemInd < len(poolTime)-1 {
+				s.itemInd++
+				s.itemTick.Reset(time.Duration(peekTime[s.itemInd]) * time.Millisecond)
+			}
+		} else {
+			// dec
+			if s.itemInd > 0 {
+				s.itemInd--
+				s.itemTick.Reset(time.Duration(peekTime[s.itemInd]) * time.Millisecond)
+			}
+		}
+	} else if top == 0 {
+		// inc
+		if s.itemInd < len(poolTime)-1 {
+			s.itemInd++
+			s.itemTick.Reset(time.Duration(peekTime[s.itemInd]) * time.Millisecond)
+		}
+	}
+}
+
+func (s *Scheduler) ItemTickReset() {
+	s.itemInd = 0
+	s.itemTick.Reset(time.Duration(peekTime[0]) * time.Millisecond)
+}
+
 func (m *Scheduler) Peek() {
 	now := time.Now().UnixMilli()
 	top, _ := m.ds.PeekTTL()
-	if now >= top && top != 0 {
+	fmt.Println("Pooling item at: ", peekTime[m.itemInd])
+	if (now >= top || top-now >= PriorityQMainQDiff) && top != 0 {
 		// if m.ds.TryLock() {
 		m.PutToPQ()
 		// } else {
 		// 	fmt.Println("Already running")
 		// }
 	}
+	m.ItemBackoff(top)
 }
 
 func (m *Scheduler) PeekZombie() {
@@ -262,6 +314,7 @@ func (s *Scheduler) CreateItem(item Item) error {
 		}
 		return nil
 	}
+	s.ItemTickReset()
 	return s.ds.CreateItemSync(item)
 }
 

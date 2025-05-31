@@ -23,6 +23,7 @@ var AckPrefix string = "ack"
 var AckPrefixByte []byte = []byte(AckPrefix)
 var oldestIEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", IPrefix))
 var oldestZEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000:0000000000000", ZPrefix))
+var oldestDEpocByte []byte = []byte(fmt.Sprintf("%s:0000000000000", DLQPrefix))
 
 type DataStorage struct {
 	db    *pebble.DB
@@ -317,7 +318,48 @@ func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error
 		return err
 	}
 	zK := fmt.Sprintf("%s:%d:%d", DLQPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), item.Id)
-	return batch.Set([]byte(zK), data, pebble.Sync)
+	return batch.Set([]byte(zK), data, pebble.NoSync)
+}
+
+func (ds *DataStorage) DeleteDeadItem(id int64) error {
+	startK := fmt.Sprintf("%s:%d", IPrefix, id)
+	return ds.db.Delete([]byte(startK), pebble.Sync)
+}
+
+func (ds *DataStorage) BatchDeleteDeadItem(b *pebble.Batch, id int64) error {
+	startK := fmt.Sprintf("%s:%d", IPrefix, id)
+	return b.Delete([]byte(startK), pebble.Sync)
+}
+
+// remove tells to clear items
+func (ds *DataStorage) CleanupDeadItems(remove bool) (chan Item, error) {
+	ch := make(chan Item, 10)
+	b := ds.NewBatch()
+	iter, err := ds.db.NewIter(nil)
+	if err != nil {
+		return ch, err
+	}
+	go func() {
+		defer func() {
+			iter.Close()
+			b.Commit(pebble.Sync)
+			close(ch)
+		}()
+		for iter.SeekGE(oldestIEpocByte); iter.Valid(); iter.Next() {
+			key := iter.Key()
+			if len(key) < len(DLQPrefix)+1 || !bytes.HasPrefix(key, DLQPrefixByte) {
+				var item Item
+				if err := item.Decode(iter.Value()); err != nil {
+					// return Item{}, err
+					ch <- item
+					if remove {
+						ds.BatchDeleteDeadItem(b, item.Id)
+					}
+				}
+			}
+		}
+	}()
+	return ch, nil
 }
 
 func (ds *DataStorage) CreateAck(id int64) error {

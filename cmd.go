@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/ayushmd/delayedQ/pkg/cuecl"
@@ -97,32 +98,52 @@ func RunCmd() {
 		},
 	}
 
-	var testCmd = &cobra.Command{
-		Use:   "test",
-		Short: "test classic flow",
+	var listenCmd = &cobra.Command{
+		Use:   "listen",
+		Short: "listen to queue and acks",
 		Run: func(cmd *cobra.Command, args []string) {
 			cli, err := cuecl.NewSchedulerClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect to server")
 			}
-			// defer cli.Close()
+			defer cli.Close()
 			err = cli.CreateQueue("test")
 			if err != nil {
 				fmt.Println("Failed to create queue")
 			}
-			// ch, err := cli.Listen("test")
-			// if err != nil {
-			// 	fmt.Println("Failed to create Listen")
-			// }
-			time.Sleep(1 * time.Second)
-			fmt.Println("Sending at: ", time.Now().UnixMilli())
-			err = cli.PushItem("test", []byte("lorem ipsum"), time.Now().Add(100*time.Millisecond).UnixMilli())
+			ch, err := cli.Listen("test")
+			if err != nil {
+				fmt.Println("Failed to create Listen")
+			}
+			for data := range ch {
+				fmt.Println("Recieved: ", string(data), time.Now().UnixMilli())
+			}
+		},
+	}
+	var putCmd = &cobra.Command{
+		Use:   "put",
+		Short: "puts a item in queue",
+		Run: func(cmd *cobra.Command, args []string) {
+			cli, err := cuecl.NewSchedulerClient(serverAddr)
+			if err != nil {
+				fmt.Println("Failed to connect to server")
+			}
+			defer cli.Close()
+			var ttl int64
+			if len(args) == 0 {
+				ttl = time.Now().Add(11 * time.Second).UnixMilli()
+			} else {
+				num, err := strconv.Atoi(args[0])
+				if err != nil {
+					fmt.Println("Conversion error:", err)
+					return
+				}
+				ttl = time.Now().Add(time.Duration(num) * time.Millisecond).UnixMilli()
+			}
+			err = cli.PushItem("test", []byte(fmt.Sprintf("{'data':'test data', 'createdAt': '%d'}", time.Now().UnixMilli())), ttl)
 			if err != nil {
 				fmt.Println("Failed to create item")
 			}
-			// for item := range ch {
-			// 	fmt.Println("Recieved Item: ", string(item), time.Now().UnixMilli())
-			// }
 		},
 	}
 
@@ -138,7 +159,10 @@ func RunCmd() {
 
 	rootCmd.Flags().StringVarP(&addr, "addr", "a", "localhost:8080", "gRPC server address")
 	rootCmd.AddCommand(queueCmd)
-	rootCmd.AddCommand(testCmd)
+	if debug {
+		rootCmd.AddCommand(listenCmd)
+		rootCmd.AddCommand(putCmd)
+	}
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
