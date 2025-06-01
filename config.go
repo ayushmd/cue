@@ -18,4 +18,6 @@ const RetryAfterTimeout = 10
 
 const ReadTimedOutAfterConnecting bool = false
 
+const CleanupTimeout = 24 * 60 * 60 * 1000
+
 const Port = 8080

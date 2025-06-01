@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func RunCmd() {
+func runCmd() {
 	var addr string
 	serverAddr := fmt.Sprintf("%s:%d", addr, Port)
 	var rootCmd = &cobra.Command{
@@ -107,11 +107,17 @@ func RunCmd() {
 				fmt.Println("Failed to connect to server")
 			}
 			defer cli.Close()
-			err = cli.CreateQueue("test")
+			var queueName string
+			if len(args) == 0 {
+				queueName = "test"
+			} else {
+				queueName = args[0]
+			}
+			err = cli.CreateQueue(queueName)
 			if err != nil {
 				fmt.Println("Failed to create queue")
 			}
-			ch, err := cli.Listen("test")
+			ch, err := cli.Listen(queueName)
 			if err != nil {
 				fmt.Println("Failed to create Listen")
 			}
@@ -140,9 +146,9 @@ func RunCmd() {
 				}
 				ttl = time.Now().Add(time.Duration(num) * time.Millisecond).UnixMilli()
 			}
-			err = cli.PushItem("test", []byte(fmt.Sprintf("{'data':'test data', 'createdAt': '%d'}", time.Now().UnixMilli())), ttl)
+			err = cli.PushItem("test.*", []byte(fmt.Sprintf("{'data':'test data', 'createdAt': '%d'}", time.Now().UnixMilli())), ttl)
 			if err != nil {
-				fmt.Println("Failed to create item")
+				fmt.Println("Failed to create item ", err)
 			}
 		},
 	}

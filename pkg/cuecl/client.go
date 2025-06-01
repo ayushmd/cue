@@ -2,7 +2,6 @@ package cuecl
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	pb "github.com/ayushmd/delayedQ/rpc"
@@ -42,7 +41,7 @@ func (sc *SchedulerClient) CreateQueue(name string) error {
 }
 
 func (sc *SchedulerClient) PushItem(queueName string, data []byte, ttl int64) error {
-	res, err := sc.client.PushItem(context.Background(), &pb.ItemRequest{
+	_, err := sc.client.PushItem(context.Background(), &pb.ItemRequest{
 		QueueName: queueName,
 		Data:      data,
 		Ttl:       ttl,
@@ -50,7 +49,6 @@ func (sc *SchedulerClient) PushItem(queueName string, data []byte, ttl int64) er
 	if err != nil {
 		return err
 	}
-	fmt.Println("PushItem success:", res.Success)
 	return nil
 }
 

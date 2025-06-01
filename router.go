@@ -47,6 +47,17 @@ func (r *Router) CheckExsists(pattern string) bool {
 	for k := range r.queues {
 		if k == pattern {
 			return true
+		}
+	}
+	return false
+}
+
+func (r *Router) CheckPatternExsists(pattern string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for k := range r.queues {
+		if k == pattern {
+			return true
 		} else if re := regexp.MustCompile(pattern); re.MatchString(k) {
 			return true
 		}
@@ -93,13 +104,17 @@ func (r *Router) ListQueues() []string {
 	return arr
 }
 
-func (r *Router) AddListener(qname string, l Listener) {
+func (r *Router) AddListener(qname string, l Listener) error {
 	r.mu.RLock()
-	q := r.queues[qname]
+	q, ok := r.queues[qname]
+	if !ok {
+		return &QueueDoesNotExsists{}
+	}
 	r.mu.RUnlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	q.Listeners = append(q.Listeners, l)
+	return nil
 }
 
 func (r *Router) RemoveListener(qname string, id int) {

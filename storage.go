@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -331,10 +332,16 @@ func (ds *DataStorage) BatchDeleteDeadItem(b *pebble.Batch, id int64) error {
 	return b.Delete([]byte(startK), pebble.Sync)
 }
 
+type cleanupOptions struct {
+	remove bool
+}
+
+var Clean cleanupOptions = cleanupOptions{remove: true}
+var NoClean cleanupOptions = cleanupOptions{remove: false}
+
 // remove tells to clear items
-func (ds *DataStorage) CleanupDeadItems(remove bool) (chan Item, error) {
+func (ds *DataStorage) CleanupDeadItems(ctx context.Context) (chan Item, error) {
 	ch := make(chan Item, 10)
-	b := ds.NewBatch()
 	iter, err := ds.db.NewIter(nil)
 	if err != nil {
 		return ch, err
@@ -342,19 +349,22 @@ func (ds *DataStorage) CleanupDeadItems(remove bool) (chan Item, error) {
 	go func() {
 		defer func() {
 			iter.Close()
-			b.Commit(pebble.Sync)
 			close(ch)
 		}()
+
 		for iter.SeekGE(oldestIEpocByte); iter.Valid(); iter.Next() {
+			select {
+			case <-ctx.Done():
+				return // Cancel the goroutine immediately
+			default:
+			}
+
 			key := iter.Key()
 			if len(key) < len(DLQPrefix)+1 || !bytes.HasPrefix(key, DLQPrefixByte) {
 				var item Item
 				if err := item.Decode(iter.Value()); err != nil {
 					// return Item{}, err
 					ch <- item
-					if remove {
-						ds.BatchDeleteDeadItem(b, item.Id)
-					}
 				}
 			}
 		}

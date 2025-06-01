@@ -1,5 +1,7 @@
 package main
 
+const debug = true
+
 func main() {
-	RunCmd()
+	runCmd()
 }

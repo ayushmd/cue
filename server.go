@@ -81,8 +81,11 @@ func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_Lis
 		},
 	}
 	fmt.Println("Adding listener to: ", req.QueueName, listener.id)
-	s.m.r.AddListener(req.QueueName, listener)
-
+	err := s.m.r.AddListener(req.QueueName, listener)
+	if err != nil {
+		return err
+	}
+	s.m.InitConnection()
 	<-stream.Context().Done()
 
 	fmt.Println("Removing listener to: ", req.QueueName, listener.id)

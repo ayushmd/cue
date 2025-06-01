@@ -20,33 +20,33 @@ type Scheduler struct {
 	ds *DataStorage
 	pq *PriorityQueue
 	zq *PriorityQueue
+	j  *Janitor
 	ch chan Item
 
 	itemTick *time.Ticker
 	itemInd  int
 	zomTick  *time.Ticker
 	zomInd   int
-
-	cleaning bool
 }
 
 var poolTime []int64 = []int64{30, 60, 600, 3600, 7200}   // in sec
 var peekTime []int64 = []int64{50, 100, 1000, 5000, 8000} // in ms
 
 func NewScheduler() *Scheduler {
+	r := NewRouter()
+	ds := NewDataStorage()
+	j := NewJanitor(r, ds)
 	m := &Scheduler{
-		ds: NewDataStorage(),
-		pq: NewPriorityQueue(),
-		zq: NewPriorityQueue(),
-		r:  NewRouter(),
-		ch: make(chan Item, 1000),
-
+		ds:       ds,
+		pq:       NewPriorityQueue(),
+		zq:       NewPriorityQueue(),
+		ch:       make(chan Item, 1000),
+		r:        r,
+		j:        j,
 		itemTick: time.NewTicker(50 * time.Millisecond),
 		itemInd:  0,
 		zomTick:  time.NewTicker(500 * time.Millisecond),
 		zomInd:   0,
-
-		cleaning: false,
 	}
 	qs, err := m.ds.GetQueues()
 	if err == nil {
@@ -88,6 +88,19 @@ func (m *Scheduler) poolZombie() {
 	}
 }
 
+func (s *Scheduler) poolJanitor() {
+	ticker := time.NewTicker(CleanupTimeout * time.Second)
+	for _ = range ticker.C {
+		s.j.RunJanitor(janitorOptions{removeall: true, send: false})
+	}
+}
+
+func (s *Scheduler) InitConnection() {
+	if ReadTimedOutAfterConnecting {
+		s.j.RunJanitor(janitorOptions{removeall: false, send: true})
+	}
+}
+
 func (m *Scheduler) listDb() {
 	ticker := time.NewTicker(7 * time.Second)
 	defer ticker.Stop()
@@ -118,6 +131,7 @@ func (m *Scheduler) Poll() {
 	go m.poolZombie()
 	go m.poolPriorityQueue()
 	go m.poolInstant()
+	go m.poolJanitor()
 	if debug {
 		go m.listDb()
 	}
@@ -154,13 +168,16 @@ func (s *Scheduler) ConsumeItem(item Item) {
 		if !exsists {
 			arr = s.r.SendItem(item)
 		}
-		fmt.Println("Number of retires before: ", item.Retries)
+		if debug {
+			fmt.Println("Number of retires before: ", item.Retries)
+		}
 		(&item).Retries = item.Retries - 1
-		fmt.Println("Number of retires left: ", item.Retries)
+		if debug {
+			fmt.Println("Number of retires left: ", item.Retries)
+		}
 		b := s.ds.NewBatch()
 		defer b.Close()
 		if len(arr) == 0 || IsNoneSend(arr) {
-			// fmt.Println("Retrying ", arr)
 			s.Retry(b, exsists, item)
 		}
 		if ZombieWhenAllPatternNotMatch {
@@ -172,7 +189,7 @@ func (s *Scheduler) ConsumeItem(item Item) {
 			}
 		}
 		err := b.Commit(pebble.Sync)
-		if err != nil {
+		if err != nil && debug {
 			fmt.Println("Failed to commit")
 		}
 	}
@@ -213,7 +230,7 @@ func (m *Scheduler) PutToPQ() {
 		for _, item := range items {
 			m.PopItem(b, item, true)
 		}
-		if err := b.Commit(pebble.Sync); err != nil {
+		if err := b.Commit(pebble.Sync); err != nil && debug {
 			fmt.Println("Error in commiting")
 		}
 		b.Close()
@@ -254,7 +271,6 @@ func (s *Scheduler) ItemTickReset() {
 func (m *Scheduler) Peek() {
 	now := time.Now().UnixMilli()
 	top, _ := m.ds.PeekTTL()
-	fmt.Println("Pooling item at: ", peekTime[m.itemInd])
 	if (now >= top || top-now >= PriorityQMainQDiff) && top != 0 {
 		// if m.ds.TryLock() {
 		m.PutToPQ()
@@ -291,7 +307,7 @@ func (m *Scheduler) CreateQueue(qname string) error {
 }
 
 func (s *Scheduler) CreateItem(item Item) error {
-	if !s.r.CheckExsists(item.QueueName) {
+	if !s.r.CheckPatternExsists(item.QueueName) {
 		return &QueueDoesNotExsists{}
 	}
 	now := time.Now().UnixMilli()
@@ -301,7 +317,7 @@ func (s *Scheduler) CreateItem(item Item) error {
 		b := s.ds.NewBatch()
 		defer b.Close()
 		s.ZombifyAllMatching(b, item)
-		if err := b.Commit(pebble.Sync); err != nil {
+		if err := b.Commit(pebble.Sync); err != nil && debug {
 			fmt.Println("Failed to commit")
 		}
 		return nil
@@ -309,7 +325,7 @@ func (s *Scheduler) CreateItem(item Item) error {
 		b := s.ds.NewBatch()
 		defer b.Close()
 		s.PopItem(b, item, false)
-		if err := b.Commit(pebble.Sync); err != nil {
+		if err := b.Commit(pebble.Sync); err != nil && debug {
 			fmt.Println("Failed to commit: ", err)
 		}
 		return nil

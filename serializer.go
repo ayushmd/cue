@@ -15,8 +15,6 @@ type Item struct {
 	Retries   uint8  `json:"retries"`
 }
 
-const debug = true
-
 func (i Item) Encode() ([]byte, error) {
 	if debug {
 		return json.Marshal(i)
