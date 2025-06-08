@@ -138,30 +138,12 @@ type NotifyRequest struct {
 	Data any   `json:"data"`
 }
 
-func (r *Router) NotifyListener(l Listener, id int64, data []byte) {
-	// flusher, ok := l.w.(http.Flusher)
-	// if !ok {
-	// 	http.Error(l.w, "Streaming unsupported", http.StatusInternalServerError)
-	// 	return
-	// }
-	// sendData, _ := json.Marshal(NotifyRequest{
-	// 	Id:   id,
-	// 	Data: data,
-	// })
-	// l.w.Header().Set("Content-Type", "application/json")
-	// l.w.Header().Set("Cache-Control", "no-cache")
-	// fmt.Println("Sending data: ", string(sendData))
-	// fmt.Fprintln(l.w, sendData)
-	// flusher.Flush()
-	l.send(id, data)
-}
-
 type SentItemResponse struct {
 	sent      bool
 	queueName string
 }
 
-func (r *Router) SendItem(item Item) []SentItemResponse {
+func (r *Router) SendItem(item Item, ack bool) []SentItemResponse {
 	arr := make([]SentItemResponse, 0)
 	qs := r.GetMatchingQueues(item.QueueName)
 	if len(qs) == 0 {
@@ -180,7 +162,7 @@ func (r *Router) SendItem(item Item) []SentItemResponse {
 			q.ind = (q.ind + 1) % len(q.Listeners)
 			l := q.Listeners[q.ind]
 			_ = r.pool.Submit(func() {
-				l.send(item.Id, item.Data)
+				l.send(item.Id, item.Data, ack)
 			})
 		}
 	}

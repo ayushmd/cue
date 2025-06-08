@@ -305,7 +305,8 @@ type ItemResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Data          []byte                 `protobuf:"bytes,2,opt,name=Data,proto3" json:"Data,omitempty"`
-	Success       bool                   `protobuf:"varint,3,opt,name=success,proto3" json:"success,omitempty"`
+	Ack           bool                   `protobuf:"varint,3,opt,name=Ack,proto3" json:"Ack,omitempty"`
+	Success       bool                   `protobuf:"varint,4,opt,name=success,proto3" json:"success,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -354,6 +355,13 @@ func (x *ItemResponse) GetData() []byte {
 	return nil
 }
 
+func (x *ItemResponse) GetAck() bool {
+	if x != nil {
+		return x.Ack
+	}
+	return false
+}
+
 func (x *ItemResponse) GetSuccess() bool {
 	if x != nil {
 		return x.Success
@@ -380,11 +388,12 @@ const file_rpc_rpc_proto_rawDesc = "" +
 	"\vItemRequest\x12\x1c\n" +
 	"\tQueueName\x18\x01 \x01(\tR\tQueueName\x12\x12\n" +
 	"\x04Data\x18\x02 \x01(\fR\x04Data\x12\x10\n" +
-	"\x03Ttl\x18\x03 \x01(\x03R\x03Ttl\"L\n" +
+	"\x03Ttl\x18\x03 \x01(\x03R\x03Ttl\"^\n" +
 	"\fItemResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
-	"\x04Data\x18\x02 \x01(\fR\x04Data\x12\x18\n" +
-	"\asuccess\x18\x03 \x01(\bR\asuccess2\xa3\x02\n" +
+	"\x04Data\x18\x02 \x01(\fR\x04Data\x12\x10\n" +
+	"\x03Ack\x18\x03 \x01(\bR\x03Ack\x12\x18\n" +
+	"\asuccess\x18\x04 \x01(\bR\asuccess2\xa3\x02\n" +
 	"\x10SchedulerService\x12\x19\n" +
 	"\x04Ping\x12\x06.Empty\x1a\t.Response\x12,\n" +
 	"\x06Listen\x12\x11.QueueNameRequest\x1a\r.ItemResponse0\x01\x12#\n" +

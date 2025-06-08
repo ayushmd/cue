@@ -92,7 +92,9 @@ func (sc *CueClient) Listen(queueName string) (chan []byte, error) {
 				return
 			}
 			ch <- item.Data
-			ackch <- item.Id
+			if item.Ack {
+				ackch <- item.Id
+			}
 		}
 	}()
 	return ch, nil

@@ -9,7 +9,7 @@ import (
 )
 
 type Listener struct {
-	send func(id int64, data []byte) error
+	send func(id int64, data []byte, ack bool) error
 	id   int
 }
 
@@ -66,7 +66,7 @@ func (s *Scheduler) Close() {
 
 func (s *Scheduler) poolInstant() {
 	for item := range s.ch {
-		s.r.SendItem(item)
+		s.r.SendItem(item, true)
 	}
 }
 
@@ -89,15 +89,19 @@ func (m *Scheduler) poolZombie() {
 }
 
 func (s *Scheduler) poolJanitor() {
-	ticker := time.NewTicker(time.Duration(cfg.CleanupTimeout) * time.Second)
+	var cleaner int = 20000
+	if cfg.CleanupTimeout < 20000 {
+		cleaner = 5000
+	}
+	ticker := time.NewTicker(time.Duration(cleaner) * time.Millisecond)
 	for range ticker.C {
-		s.j.RunJanitor(janitorOptions{removeall: true, send: false})
+		s.j.runJanitor(clean)
 	}
 }
 
 func (s *Scheduler) InitConnection() {
 	if cfg.ReadTimedOutAfterConnecting {
-		s.j.RunJanitor(janitorOptions{removeall: false, send: true})
+		go s.j.runJanitor(join)
 	}
 }
 
@@ -122,7 +126,7 @@ func (m *Scheduler) listDb() {
 func (m *Scheduler) poolPriorityQueue() {
 	for job := range m.pq.Subscribe() {
 		item := job.(Item)
-		m.r.SendItem(item)
+		m.r.SendItem(item, true)
 	}
 }
 
@@ -149,7 +153,13 @@ func IsNoneSend(arr []SentItemResponse) bool {
 func (s *Scheduler) Retry(b *pebble.Batch, acked bool, item Item) {
 	s.ds.BatchDeleteZombieItem(b, item)
 	if acked || item.Retries <= 0 {
-		s.ds.BatchCreateDeadItem(b, item)
+		if cfg.ReadTimedOutAfterConnecting {
+			if !acked {
+				s.ds.BatchCreateDeadItem(b, item)
+			}
+		} else {
+			s.ds.BatchCreateDeadItem(b, item)
+		}
 	} else {
 		(&item).TTL = time.Now().Add(time.Duration(cfg.RetryAfterTimeout) * time.Second).UnixMilli()
 		s.ds.BatchCreateZombieItem(b, item)
@@ -157,7 +167,7 @@ func (s *Scheduler) Retry(b *pebble.Batch, acked bool, item Item) {
 }
 
 func (s *Scheduler) InstantConsume(item Item) {
-	s.r.SendItem(item)
+	s.r.SendItem(item, true)
 }
 
 func (s *Scheduler) ConsumeItem(item Item) {
@@ -166,7 +176,7 @@ func (s *Scheduler) ConsumeItem(item Item) {
 		defer s.ds.ZUnlock()
 		arr := make([]SentItemResponse, 0)
 		if !exsists {
-			arr = s.r.SendItem(item)
+			arr = s.r.SendItem(item, true)
 		}
 		if debug {
 			fmt.Println("Number of retires before: ", item.Retries)

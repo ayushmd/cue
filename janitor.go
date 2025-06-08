@@ -29,7 +29,10 @@ type janitorOptions struct {
 	removeall bool
 }
 
-func (j *Janitor) RunJanitor(opts janitorOptions) {
+var clean janitorOptions = janitorOptions{removeall: false, send: false}
+var join janitorOptions = janitorOptions{removeall: true, send: true}
+
+func (j *Janitor) runJanitor(opts janitorOptions) {
 	if opts.send {
 		atomic.StoreInt32(&j.sending, 1)
 		defer atomic.StoreInt32(&j.sending, 0)
@@ -40,16 +43,26 @@ func (j *Janitor) RunJanitor(opts janitorOptions) {
 		now := time.Now().UnixMilli()
 		atomic.StoreInt32(&j.cleaning, 1)
 		defer atomic.StoreInt32(&j.cleaning, 0)
-		ch, _ := j.ds.CleanupDeadItems(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		ch, err := j.ds.CleanupDeadItems(ctx)
+		if err != nil {
+			cancel()
+			return
+		}
 		for item := range ch {
-			if atomic.LoadInt32(&j.sending) == 1 {
-				j.r.SendItem(item)
-			}
-			if opts.removeall {
-				j.ds.BatchDeleteDeadItem(b, item.Id)
-			} else {
-				if now-item.Id >= cfg.CleanupTimeout {
+			if item.Id != 0 {
+				if atomic.LoadInt32(&j.sending) == 1 {
+					j.r.SendItem(item, false)
+				}
+				if opts.removeall {
 					j.ds.BatchDeleteDeadItem(b, item.Id)
+				} else {
+					if now-item.TTL >= cfg.CleanupTimeout {
+						j.ds.BatchDeleteDeadItem(b, item.Id)
+					} else {
+						cancel()
+					}
 				}
 			}
 		}

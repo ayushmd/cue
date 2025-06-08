@@ -318,17 +318,17 @@ func (ds *DataStorage) BatchCreateDeadItem(batch *pebble.Batch, item Item) error
 	if err != nil {
 		return err
 	}
-	zK := fmt.Sprintf("%s:%d:%d", DLQPrefix, time.Now().Add(time.Duration(5)*time.Second).UnixMilli(), item.Id)
+	zK := fmt.Sprintf("%s:%d", DLQPrefix, item.Id)
 	return batch.Set([]byte(zK), data, pebble.NoSync)
 }
 
 func (ds *DataStorage) DeleteDeadItem(id int64) error {
-	startK := fmt.Sprintf("%s:%d", IPrefix, id)
+	startK := fmt.Sprintf("%s:%d", DLQPrefix, id)
 	return ds.db.Delete([]byte(startK), pebble.Sync)
 }
 
 func (ds *DataStorage) BatchDeleteDeadItem(b *pebble.Batch, id int64) error {
-	startK := fmt.Sprintf("%s:%d", IPrefix, id)
+	startK := fmt.Sprintf("%s:%d", DLQPrefix, id)
 	return b.Delete([]byte(startK), pebble.Sync)
 }
 
@@ -342,8 +342,12 @@ var NoClean cleanupOptions = cleanupOptions{remove: false}
 // remove tells to clear items
 func (ds *DataStorage) CleanupDeadItems(ctx context.Context) (chan Item, error) {
 	ch := make(chan Item, 10)
-	iter, err := ds.db.NewIter(nil)
+	iter, err := ds.db.NewIter(&pebble.IterOptions{
+		LowerBound: oldestDEpocByte,
+	})
 	if err != nil {
+		iter.Close()
+		close(ch)
 		return ch, err
 	}
 	go func() {
@@ -352,20 +356,22 @@ func (ds *DataStorage) CleanupDeadItems(ctx context.Context) (chan Item, error) 
 			close(ch)
 		}()
 
-		for iter.SeekGE(oldestIEpocByte); iter.Valid(); iter.Next() {
+		for iter.First(); iter.Valid(); iter.Next() {
 			select {
 			case <-ctx.Done():
+				iter.Close()
+				close(ch)
 				return // Cancel the goroutine immediately
 			default:
 			}
 
 			key := iter.Key()
 			if len(key) < len(DLQPrefix)+1 || !bytes.HasPrefix(key, DLQPrefixByte) {
-				var item Item
-				if err := item.Decode(iter.Value()); err != nil {
-					// return Item{}, err
-					ch <- item
-				}
+				break
+			}
+			var item Item
+			if err := item.Decode(iter.Value()); err == nil {
+				ch <- item
 			}
 		}
 	}()

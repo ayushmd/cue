@@ -11,7 +11,7 @@ import (
 
 // Config holds all configuration values
 type Config struct {
-	PriorityQMainQDiff           int64
+	PriorityQMainQDiff           int64 `yaml:"priority_time"`
 	ZombieWhenAllPatternNotMatch bool
 	MaxZombifiedRetries          uint8 `yaml:"max_retries"`
 	RetryAfterTimeout            int   `yaml:"retry_timeout"`
@@ -65,6 +65,5 @@ func LoadConfig() (*Config, error) {
 			return config, fmt.Errorf("failed to parse config file: %v", err)
 		}
 	}
-	fmt.Println("Config: ", config)
 	return config, nil
 }

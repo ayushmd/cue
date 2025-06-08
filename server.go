@@ -71,16 +71,21 @@ func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_Lis
 	id := s.GetNextID()
 	listener := Listener{
 		id: id,
-		send: func(id int64, data []byte) error {
-			fmt.Println("Sending out: ", string(data))
+		send: func(id int64, data []byte, ack bool) error {
+			if debug {
+				fmt.Println("Sending out: ", string(data))
+			}
 			return stream.Send(&pb.ItemResponse{
 				Id:      id,
 				Data:    data,
 				Success: true,
+				Ack:     ack,
 			})
 		},
 	}
-	fmt.Println("Adding listener to: ", req.QueueName, listener.id)
+	if debug {
+		fmt.Println("Adding listener to: ", req.QueueName, listener.id)
+	}
 	err := s.m.r.AddListener(req.QueueName, listener)
 	if err != nil {
 		return err
@@ -88,7 +93,9 @@ func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_Lis
 	s.m.InitConnection()
 	<-stream.Context().Done()
 
-	fmt.Println("Removing listener to: ", req.QueueName, listener.id)
+	if debug {
+		fmt.Println("Removing listener to: ", req.QueueName, listener.id)
+	}
 	s.m.r.RemoveListener(req.QueueName, id)
 	return nil
 }
