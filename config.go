@@ -16,7 +16,7 @@ const MaxZombiefiedRetries = 2
 // The time after which the retry is performed
 const RetryAfterTimeout = 10
 
-const ReadTimedOutAfterConnecting bool = false
+const ReadTimedOutAfterConnecting bool = true
 
 const CleanupTimeout = 24 * 60 * 60 * 1000
 

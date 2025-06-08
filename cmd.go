@@ -137,7 +137,7 @@ func runCmd() {
 			defer cli.Close()
 			var ttl int64
 			if len(args) == 0 {
-				ttl = time.Now().Add(11 * time.Second).UnixMilli()
+				ttl = time.Now().Add(15 * time.Second).UnixMilli()
 			} else {
 				num, err := strconv.Atoi(args[0])
 				if err != nil {

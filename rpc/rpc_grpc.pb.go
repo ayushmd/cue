@@ -19,6 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	SchedulerService_Ping_FullMethodName        = "/SchedulerService/Ping"
 	SchedulerService_Listen_FullMethodName      = "/SchedulerService/Listen"
 	SchedulerService_PushItem_FullMethodName    = "/SchedulerService/PushItem"
 	SchedulerService_Ack_FullMethodName         = "/SchedulerService/Ack"
@@ -31,6 +32,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SchedulerServiceClient interface {
+	Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Response, error)
 	Listen(ctx context.Context, in *QueueNameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ItemResponse], error)
 	PushItem(ctx context.Context, in *ItemRequest, opts ...grpc.CallOption) (*Response, error)
 	Ack(ctx context.Context, in *AckRequest, opts ...grpc.CallOption) (*Response, error)
@@ -45,6 +47,16 @@ type schedulerServiceClient struct {
 
 func NewSchedulerServiceClient(cc grpc.ClientConnInterface) SchedulerServiceClient {
 	return &schedulerServiceClient{cc}
+}
+
+func (c *schedulerServiceClient) Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Response, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Response)
+	err := c.cc.Invoke(ctx, SchedulerService_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *schedulerServiceClient) Listen(ctx context.Context, in *QueueNameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ItemResponse], error) {
@@ -120,6 +132,7 @@ func (c *schedulerServiceClient) DeleteQueue(ctx context.Context, in *QueueNameR
 // All implementations must embed UnimplementedSchedulerServiceServer
 // for forward compatibility.
 type SchedulerServiceServer interface {
+	Ping(context.Context, *Empty) (*Response, error)
 	Listen(*QueueNameRequest, grpc.ServerStreamingServer[ItemResponse]) error
 	PushItem(context.Context, *ItemRequest) (*Response, error)
 	Ack(context.Context, *AckRequest) (*Response, error)
@@ -136,6 +149,9 @@ type SchedulerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSchedulerServiceServer struct{}
 
+func (UnimplementedSchedulerServiceServer) Ping(context.Context, *Empty) (*Response, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
 func (UnimplementedSchedulerServiceServer) Listen(*QueueNameRequest, grpc.ServerStreamingServer[ItemResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Listen not implemented")
 }
@@ -173,6 +189,24 @@ func RegisterSchedulerServiceServer(s grpc.ServiceRegistrar, srv SchedulerServic
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&SchedulerService_ServiceDesc, srv)
+}
+
+func _SchedulerService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchedulerServiceServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchedulerService_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchedulerServiceServer).Ping(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _SchedulerService_Listen_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -283,6 +317,10 @@ var SchedulerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "SchedulerService",
 	HandlerType: (*SchedulerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _SchedulerService_Ping_Handler,
+		},
 		{
 			MethodName: "PushItem",
 			Handler:    _SchedulerService_PushItem_Handler,

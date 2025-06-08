@@ -3,6 +3,7 @@ syntax = "proto3";
 option go_package = "github.com/ayushmd/delayedQ/rpc";
 
 service SchedulerService {
+    rpc Ping(Empty) returns (Response);
     rpc Listen (QueueNameRequest) returns (stream ItemResponse);
     rpc PushItem (ItemRequest) returns (Response);
     rpc Ack (AckRequest) returns (Response);

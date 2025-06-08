@@ -48,8 +48,8 @@ func (ds *DataStorage) ZUnlock() {
 	atomic.StoreInt32(&ds.zflag, 0)
 }
 
-func NewDataStorage() *DataStorage {
-	db, err := pebble.Open("demo", &pebble.Options{})
+func NewDataStorage(folder string) *DataStorage {
+	db, err := pebble.Open(folder, &pebble.Options{})
 	if err != nil {
 		log.Fatal(err)
 	}

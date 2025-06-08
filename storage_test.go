@@ -11,11 +11,11 @@ import (
 
 func setupDB(t *testing.T) *DataStorage {
 	// Remove old db if any
-	os.RemoveAll("demo")
-	ds := NewDataStorage()
+	os.RemoveAll("test")
+	ds := NewDataStorage("test")
 	t.Cleanup(func() {
 		ds.db.Close()
-		os.RemoveAll("demo")
+		os.RemoveAll("test")
 	})
 	return ds
 }

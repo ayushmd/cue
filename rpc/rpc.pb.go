@@ -384,8 +384,9 @@ const file_rpc_rpc_proto_rawDesc = "" +
 	"\fItemResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04Data\x18\x02 \x01(\fR\x04Data\x12\x18\n" +
-	"\asuccess\x18\x03 \x01(\bR\asuccess2\x88\x02\n" +
-	"\x10SchedulerService\x12,\n" +
+	"\asuccess\x18\x03 \x01(\bR\asuccess2\xa3\x02\n" +
+	"\x10SchedulerService\x12\x19\n" +
+	"\x04Ping\x12\x06.Empty\x1a\t.Response\x12,\n" +
 	"\x06Listen\x12\x11.QueueNameRequest\x1a\r.ItemResponse0\x01\x12#\n" +
 	"\bPushItem\x12\f.ItemRequest\x1a\t.Response\x12\x1d\n" +
 	"\x03Ack\x12\v.AckRequest\x1a\t.Response\x12+\n" +
@@ -417,20 +418,22 @@ var file_rpc_rpc_proto_goTypes = []any{
 	(*ItemResponse)(nil),      // 6: ItemResponse
 }
 var file_rpc_rpc_proto_depIdxs = []int32{
-	1, // 0: SchedulerService.Listen:input_type -> QueueNameRequest
-	5, // 1: SchedulerService.PushItem:input_type -> ItemRequest
-	2, // 2: SchedulerService.Ack:input_type -> AckRequest
-	1, // 3: SchedulerService.CreateQueue:input_type -> QueueNameRequest
-	0, // 4: SchedulerService.ListQueues:input_type -> Empty
-	1, // 5: SchedulerService.DeleteQueue:input_type -> QueueNameRequest
-	6, // 6: SchedulerService.Listen:output_type -> ItemResponse
-	3, // 7: SchedulerService.PushItem:output_type -> Response
-	3, // 8: SchedulerService.Ack:output_type -> Response
-	3, // 9: SchedulerService.CreateQueue:output_type -> Response
-	4, // 10: SchedulerService.ListQueues:output_type -> ListQueueResponse
-	3, // 11: SchedulerService.DeleteQueue:output_type -> Response
-	6, // [6:12] is the sub-list for method output_type
-	0, // [0:6] is the sub-list for method input_type
+	0, // 0: SchedulerService.Ping:input_type -> Empty
+	1, // 1: SchedulerService.Listen:input_type -> QueueNameRequest
+	5, // 2: SchedulerService.PushItem:input_type -> ItemRequest
+	2, // 3: SchedulerService.Ack:input_type -> AckRequest
+	1, // 4: SchedulerService.CreateQueue:input_type -> QueueNameRequest
+	0, // 5: SchedulerService.ListQueues:input_type -> Empty
+	1, // 6: SchedulerService.DeleteQueue:input_type -> QueueNameRequest
+	3, // 7: SchedulerService.Ping:output_type -> Response
+	6, // 8: SchedulerService.Listen:output_type -> ItemResponse
+	3, // 9: SchedulerService.PushItem:output_type -> Response
+	3, // 10: SchedulerService.Ack:output_type -> Response
+	3, // 11: SchedulerService.CreateQueue:output_type -> Response
+	4, // 12: SchedulerService.ListQueues:output_type -> ListQueueResponse
+	3, // 13: SchedulerService.DeleteQueue:output_type -> Response
+	7, // [7:14] is the sub-list for method output_type
+	0, // [0:7] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name

@@ -93,6 +93,10 @@ func (s *Server) Listen(req *pb.QueueNameRequest, stream pb.SchedulerService_Lis
 	return nil
 }
 
+func (s *Server) Ping(ctx context.Context, in *pb.Empty) (*pb.Response, error) {
+	return &pb.Response{Success: true}, nil
+}
+
 func (s *Server) PushItem(ctx context.Context, in *pb.ItemRequest) (*pb.Response, error) {
 	item := Item{
 		QueueName: in.GetQueueName(),

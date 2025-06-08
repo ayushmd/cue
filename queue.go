@@ -31,7 +31,7 @@ func NewQueue(name string) *Queue {
 }
 
 func ListAllQueues() ([]string, error) {
-	ds := NewDataStorage()
+	ds := NewDataStorage("demo")
 	arr := make([]string, 0)
 	qs, err := ds.GetQueues()
 	if err != nil {
@@ -44,11 +44,11 @@ func ListAllQueues() ([]string, error) {
 }
 
 func DeleteQueue(qname string) error {
-	ds := NewDataStorage()
+	ds := NewDataStorage("demo")
 	return ds.DeleteQueue(qname)
 }
 
 func CreateQueue(qname string) error {
-	ds := NewDataStorage()
+	ds := NewDataStorage("demo")
 	return ds.CreateQueue(qname)
 }

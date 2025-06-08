@@ -28,6 +28,11 @@ func NewSchedulerClient(addr string) (*SchedulerClient, error) {
 	}, nil
 }
 
+func (sc *SchedulerClient) Ping() (bool, error) {
+	res, err := sc.client.Ping(context.Background(), &pb.Empty{})
+	return res.GetSuccess(), err
+}
+
 func (sc *SchedulerClient) Close() error {
 	return sc.conn.Close()
 }

@@ -34,7 +34,7 @@ var peekTime []int64 = []int64{50, 100, 1000, 5000, 8000} // in ms
 
 func NewScheduler() *Scheduler {
 	r := NewRouter()
-	ds := NewDataStorage()
+	ds := NewDataStorage("demo")
 	j := NewJanitor(r, ds)
 	m := &Scheduler{
 		ds:       ds,
@@ -271,7 +271,7 @@ func (s *Scheduler) ItemTickReset() {
 func (m *Scheduler) Peek() {
 	now := time.Now().UnixMilli()
 	top, _ := m.ds.PeekTTL()
-	if (now >= top || top-now >= PriorityQMainQDiff) && top != 0 {
+	if (now >= top || top-now <= PriorityQMainQDiff) && top != 0 {
 		// if m.ds.TryLock() {
 		m.PutToPQ()
 		// } else {
