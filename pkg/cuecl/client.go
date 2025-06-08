@@ -9,12 +9,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type SchedulerClient struct {
+type CueClient struct {
 	conn   *grpc.ClientConn
 	client pb.SchedulerServiceClient
 }
 
-func NewSchedulerClient(addr string) (*SchedulerClient, error) {
+func NewCueClient(addr string) (*CueClient, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -22,22 +22,22 @@ func NewSchedulerClient(addr string) (*SchedulerClient, error) {
 		return nil, err
 	}
 
-	return &SchedulerClient{
+	return &CueClient{
 		conn:   conn,
 		client: pb.NewSchedulerServiceClient(conn),
 	}, nil
 }
 
-func (sc *SchedulerClient) Ping() (bool, error) {
+func (sc *CueClient) Ping() (bool, error) {
 	res, err := sc.client.Ping(context.Background(), &pb.Empty{})
 	return res.GetSuccess(), err
 }
 
-func (sc *SchedulerClient) Close() error {
+func (sc *CueClient) Close() error {
 	return sc.conn.Close()
 }
 
-func (sc *SchedulerClient) CreateQueue(name string) error {
+func (sc *CueClient) CreateQueue(name string) error {
 	_, err := sc.client.CreateQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (sc *SchedulerClient) CreateQueue(name string) error {
 	return nil
 }
 
-func (sc *SchedulerClient) PushItem(queueName string, data []byte, ttl int64) error {
+func (sc *CueClient) PushItem(queueName string, data []byte, ttl int64) error {
 	_, err := sc.client.PushItem(context.Background(), &pb.ItemRequest{
 		QueueName: queueName,
 		Data:      data,
@@ -57,7 +57,7 @@ func (sc *SchedulerClient) PushItem(queueName string, data []byte, ttl int64) er
 	return nil
 }
 
-func (sc *SchedulerClient) Listen(queueName string) (chan []byte, error) {
+func (sc *CueClient) Listen(queueName string) (chan []byte, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// defer cancel()
 
@@ -98,7 +98,7 @@ func (sc *SchedulerClient) Listen(queueName string) (chan []byte, error) {
 	return ch, nil
 }
 
-func (sc *SchedulerClient) Ack(id int64) error {
+func (sc *CueClient) Ack(id int64) error {
 	_, err := sc.client.Ack(context.Background(), &pb.AckRequest{Id: id})
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func (sc *SchedulerClient) Ack(id int64) error {
 	return nil
 }
 
-func (sc *SchedulerClient) ListQueues() ([]string, error) {
+func (sc *CueClient) ListQueues() ([]string, error) {
 	res, err := sc.client.ListQueues(context.Background(), &pb.Empty{})
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (sc *SchedulerClient) ListQueues() ([]string, error) {
 	return res.Data, nil
 }
 
-func (sc *SchedulerClient) DeleteQueue(name string) error {
+func (sc *CueClient) DeleteQueue(name string) error {
 	_, err := sc.client.DeleteQueue(context.Background(), &pb.QueueNameRequest{QueueName: name})
 	if err != nil {
 		return err

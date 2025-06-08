@@ -12,14 +12,14 @@ import (
 	"github.com/ayushmd/delayedQ/pkg/cuecl"
 )
 
-var client *cuecl.SchedulerClient
+var client *cuecl.CueClient
 
 func TestMain(m *testing.M) {
 	go func() {
 		s := NewServer()
 		log.Fatal(s.Start())
 	}()
-	cli, _ := cuecl.NewSchedulerClient("localhost:8080")
+	cli, _ := cuecl.NewCueClient("localhost:8080")
 	client = cli
 	// Wait until server is ready
 	waitUntilServerReady()

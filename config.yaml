@@ -1,0 +1,16 @@
+# Cue config
+
+# The number of retries to send to zombified
+max_retries: 2
+
+# The time after which the retry is performed (in seconds)
+retry_timeout: 10
+
+# Whether to read timed out items after connecting
+consume_expired: false
+
+# Cleanup timeout for items consumed
+cleanup_timeout: 86400000
+
+# Server port
+port: 8080

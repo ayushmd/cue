@@ -28,7 +28,7 @@ func NewServer() *Server {
 		nextID: 0,
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

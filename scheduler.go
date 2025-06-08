@@ -89,14 +89,14 @@ func (m *Scheduler) poolZombie() {
 }
 
 func (s *Scheduler) poolJanitor() {
-	ticker := time.NewTicker(CleanupTimeout * time.Second)
-	for _ = range ticker.C {
+	ticker := time.NewTicker(time.Duration(cfg.CleanupTimeout) * time.Second)
+	for range ticker.C {
 		s.j.RunJanitor(janitorOptions{removeall: true, send: false})
 	}
 }
 
 func (s *Scheduler) InitConnection() {
-	if ReadTimedOutAfterConnecting {
+	if cfg.ReadTimedOutAfterConnecting {
 		s.j.RunJanitor(janitorOptions{removeall: false, send: true})
 	}
 }
@@ -151,7 +151,7 @@ func (s *Scheduler) Retry(b *pebble.Batch, acked bool, item Item) {
 	if acked || item.Retries <= 0 {
 		s.ds.BatchCreateDeadItem(b, item)
 	} else {
-		(&item).TTL = time.Now().Add(5 * time.Second).UnixMilli()
+		(&item).TTL = time.Now().Add(time.Duration(cfg.RetryAfterTimeout) * time.Second).UnixMilli()
 		s.ds.BatchCreateZombieItem(b, item)
 	}
 }
@@ -180,7 +180,7 @@ func (s *Scheduler) ConsumeItem(item Item) {
 		if len(arr) == 0 || IsNoneSend(arr) {
 			s.Retry(b, exsists, item)
 		}
-		if ZombieWhenAllPatternNotMatch {
+		if cfg.ZombieWhenAllPatternNotMatch {
 			for _, q := range arr {
 				(&item).QueueName = q.queueName
 				if !q.sent {
@@ -211,7 +211,7 @@ func (m *Scheduler) PopItem(b *pebble.Batch, item Item, exsists bool) {
 }
 
 func (s *Scheduler) ZombifyAllMatching(b *pebble.Batch, item Item) {
-	(&item).Retries = MaxZombiefiedRetries
+	(&item).Retries = cfg.MaxZombifiedRetries
 	qs := s.r.GetMatchingQueues(item.QueueName)
 	for _, q := range qs {
 		(&item).QueueName = q.Name
@@ -271,7 +271,7 @@ func (s *Scheduler) ItemTickReset() {
 func (m *Scheduler) Peek() {
 	now := time.Now().UnixMilli()
 	top, _ := m.ds.PeekTTL()
-	if (now >= top || top-now <= PriorityQMainQDiff) && top != 0 {
+	if (now >= top || top-now <= cfg.PriorityQMainQDiff) && top != 0 {
 		// if m.ds.TryLock() {
 		m.PutToPQ()
 		// } else {
@@ -321,7 +321,7 @@ func (s *Scheduler) CreateItem(item Item) error {
 			fmt.Println("Failed to commit")
 		}
 		return nil
-	} else if int64(item.TTL)-now <= PriorityQMainQDiff {
+	} else if int64(item.TTL)-now <= cfg.PriorityQMainQDiff {
 		b := s.ds.NewBatch()
 		defer b.Close()
 		s.PopItem(b, item, false)

@@ -48,7 +48,7 @@ func (j *Janitor) RunJanitor(opts janitorOptions) {
 			if opts.removeall {
 				j.ds.BatchDeleteDeadItem(b, item.Id)
 			} else {
-				if now-item.Id >= CleanupTimeout {
+				if now-item.Id >= cfg.CleanupTimeout {
 					j.ds.BatchDeleteDeadItem(b, item.Id)
 				}
 			}

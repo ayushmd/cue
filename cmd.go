@@ -12,7 +12,7 @@ import (
 
 func runCmd() {
 	var addr string
-	serverAddr := fmt.Sprintf("%s:%d", addr, Port)
+	serverAddr := fmt.Sprintf("%s:%d", addr, cfg.Port)
 	var rootCmd = &cobra.Command{
 		Use:   "sceduler",
 		Short: "scheduler cli",
@@ -31,7 +31,7 @@ func runCmd() {
 		Use:   "list",
 		Short: "List all queues",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli, err := cuecl.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewCueClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect server")
 			}
@@ -64,7 +64,7 @@ func runCmd() {
 			if response != "y" && response != "Y" {
 				return
 			}
-			cli, err := cuecl.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewCueClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect server")
 			}
@@ -84,7 +84,7 @@ func runCmd() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			queueName := args[0]
-			cli, err := cuecl.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewCueClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect to server")
 			}
@@ -102,7 +102,7 @@ func runCmd() {
 		Use:   "listen",
 		Short: "listen to queue and acks",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli, err := cuecl.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewCueClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect to server")
 			}
@@ -130,7 +130,7 @@ func runCmd() {
 		Use:   "put",
 		Short: "puts a item in queue",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli, err := cuecl.NewSchedulerClient(serverAddr)
+			cli, err := cuecl.NewCueClient(serverAddr)
 			if err != nil {
 				fmt.Println("Failed to connect to server")
 			}
