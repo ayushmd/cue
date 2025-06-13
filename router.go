@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"regexp"
 	"sync"
 
@@ -153,7 +152,6 @@ func (r *Router) SendItem(item Item, ack bool) []SentItemResponse {
 	defer r.mu.RUnlock()
 	for _, q := range qs {
 		if len(q.Listeners) == 0 {
-			fmt.Println("listeners available: ", len(q.Listeners))
 			arr = append(arr, SentItemResponse{
 				queueName: q.Name,
 				sent:      false,

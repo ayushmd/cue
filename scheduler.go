@@ -34,7 +34,7 @@ var peekTime []int64 = []int64{50, 100, 1000, 5000, 8000} // in ms
 
 func NewScheduler() *Scheduler {
 	r := NewRouter()
-	ds := NewDataStorage("demo")
+	ds := NewDataStorage("data")
 	j := NewJanitor(r, ds)
 	m := &Scheduler{
 		ds:       ds,
@@ -233,7 +233,7 @@ func (m *Scheduler) PutToPQ() {
 	// defer m.ds.Unlock()
 	items, err := m.ds.ItemsSized(10)
 	if err != nil {
-		fmt.Println(err)
+		return
 	}
 	if len(items) != 0 {
 		b := m.ds.NewBatch()

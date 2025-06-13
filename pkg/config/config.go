@@ -32,7 +32,6 @@ func DefaultConfig() *Config {
 	}
 }
 
-// LoadConfig loads configuration from YAML file with fallback to default values
 func LoadConfig() (*Config, error) {
 	config := DefaultConfig()
 
