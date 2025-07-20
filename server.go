@@ -22,13 +22,13 @@ type Server struct {
 	nextID int
 }
 
-func NewServer() *Server {
+func NewServer(port int) *Server {
 	s := &Server{
 		m:      NewScheduler(),
 		nextID: 0,
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

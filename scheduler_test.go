@@ -16,7 +16,7 @@ var client *cuecl.CueClient
 
 func TestMain(m *testing.M) {
 	go func() {
-		s := NewServer()
+		s := NewServer(8080)
 		log.Fatal(s.Start())
 	}()
 	cli, _ := cuecl.NewCueClient("localhost:8080")

@@ -25,7 +25,7 @@ func RunCmd(debugMode bool) {
 		Use:   "server",
 		Short: "Runs the cue server",
 		Run: func(cmd *cobra.Command, args []string) {
-			s := NewServer()
+			s := NewServer(cfg.Port)
 			log.Fatal(s.Start())
 		},
 	}
