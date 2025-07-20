@@ -7,7 +7,7 @@ go get github.com/ayushmd/cue@latest
 Recieve messages from queue after a certain time or on a certain time. Useful for scheduling jobs, notifications.
 
 ```go
-package main
+package cue
 
 import (
 	"fmt"

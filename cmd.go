@@ -1,4 +1,4 @@
-package main
+package cue
 
 import (
 	"fmt"
@@ -10,7 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runCmd() {
+var debug bool = false
+
+func RunCmd(debugMode bool) {
+	debug = debugMode
 	var addr string
 	serverAddr := fmt.Sprintf("%s:%d", addr, cfg.Port)
 	var rootCmd = &cobra.Command{

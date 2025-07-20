@@ -1,4 +1,4 @@
-package main
+package cue
 
 import (
 	"github.com/ayushmd/cue/pkg/config"
