@@ -1,4 +1,4 @@
-module github.com/ayushmd/cue
+module github.com/ayushmd/cue/v2
 
 go 1.23
 
