@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	pb "github.com/ayushmd/delayedQ/rpc"
+	pb "github.com/ayushmd/cue/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

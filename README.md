@@ -1,7 +1,7 @@
 ﻿# DelayedQ
 
 ```
-go get github.com/ayushmd/delayedQ@latest
+go get github.com/ayushmd/cue@latest
 ```
 
 Recieve messages from queue after a certain time or on a certain time. Useful for scheduling jobs, notifications.
@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ayushmd/delayedQ"
+	"github.com/ayushmd/cue"
 )
 
 type TTLItem struct {

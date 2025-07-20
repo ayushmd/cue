@@ -1,4 +1,4 @@
-module github.com/ayushmd/delayedQ
+module github.com/ayushmd/cue
 
 go 1.23
 

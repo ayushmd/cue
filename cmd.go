@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ayushmd/delayedQ/pkg/cuecl"
+	"github.com/ayushmd/cue/pkg/cuecl"
 	"github.com/spf13/cobra"
 )
 
@@ -14,13 +14,13 @@ func runCmd() {
 	var addr string
 	serverAddr := fmt.Sprintf("%s:%d", addr, cfg.Port)
 	var rootCmd = &cobra.Command{
-		Use:   "sceduler",
-		Short: "scheduler cli",
+		Use:   "cue",
+		Short: "cue cli",
 	}
 
 	var serverCmd = &cobra.Command{
 		Use:   "server",
-		Short: "Runs the scheduler server",
+		Short: "Runs the cue server",
 		Run: func(cmd *cobra.Command, args []string) {
 			s := NewServer()
 			log.Fatal(s.Start())

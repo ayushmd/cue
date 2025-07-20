@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/ayushmd/delayedQ/rpc";
+option go_package = "github.com/ayushmd/cue/rpc";
 
 service SchedulerService {
     rpc Ping(Empty) returns (Response);

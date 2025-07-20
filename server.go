@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	pb "github.com/ayushmd/delayedQ/rpc"
+	pb "github.com/ayushmd/cue/rpc"
 )
 
 type Server struct {

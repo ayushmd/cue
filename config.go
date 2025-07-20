@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/ayushmd/delayedQ/pkg/config"
+	"github.com/ayushmd/cue/pkg/config"
 )
 
 var (

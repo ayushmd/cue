@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ayushmd/delayedQ/pkg/cuecl"
+	"github.com/ayushmd/cue/pkg/cuecl"
 )
 
 var client *cuecl.CueClient

@@ -1,6 +1,6 @@
 package main
 
-var debug = false
+var debug = true
 
 func main() {
 	runCmd()
