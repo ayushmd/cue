@@ -28,7 +28,7 @@ func DefaultConfig() *Config {
 		RetryAfterTimeout:            10,
 		ReadTimedOutAfterConnecting:  true,
 		CleanupTimeout:               86400000, // 24 hours
-		Port:                         8080,
+		Port:                         6336,
 	}
 }
 

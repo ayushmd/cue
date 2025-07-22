@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
@@ -7,11 +7,12 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -ldflags="-s -w" -o main
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o main ./run && chmod +x main
 
 FROM scratch
 
 COPY --from=builder /app/main /
 
-EXPOSE 8080
+EXPOSE 6336
+
 ENTRYPOINT ["/main", "server"]

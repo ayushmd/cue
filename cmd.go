@@ -25,6 +25,7 @@ func RunCmd(debugMode bool) {
 		Use:   "server",
 		Short: "Runs the cue server",
 		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println(cfg)
 			s := NewServer(cfg.Port)
 			log.Fatal(s.Start())
 		},
@@ -149,7 +150,7 @@ func RunCmd(debugMode bool) {
 				}
 				ttl = time.Now().Add(time.Duration(num) * time.Millisecond).UnixMilli()
 			}
-			err = cli.PushItem("test.*", []byte(fmt.Sprintf("{'data':'test data', 'createdAt': '%d'}", time.Now().UnixMilli())), ttl)
+			err = cli.PushItem("test", []byte(fmt.Sprintf("{'data':'test data', 'createdAt': '%d'}", time.Now().UnixMilli())), ttl)
 			if err != nil {
 				fmt.Println("Failed to create item ", err)
 			}

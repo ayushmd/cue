@@ -1,57 +1,101 @@
-﻿# DelayedQ
+﻿# Cue
+
+Recieve messages from queue after a certain time or on a certain time. Useful for scheduling jobs, notification systems, expiring records with callback. 
+
+## Setting Up Server
+
+### Using Docker
+
+Below is the pre-built docker image for cue-server
+
+```
+docker pull cuekit/cue-server:latest
+```
+
+Run Using:
+```
+docker run --name cue-server -d -p 6336:6336 cue-server
+```
+
+**Note:** Port **6336** is the default port on which cue-server runs on
+
+## Using Cue with Go Cue-Client
+
+Install library with below command
 
 ```
 go get github.com/ayushmd/cue@latest
 ```
 
-Recieve messages from queue after a certain time or on a certain time. Useful for scheduling jobs, notifications.
+## Examples
+### Listen to queue
 
 ```go
-package cue
+package main
+
+import (
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/ayushmd/cue/pkg/cuecl"
+)
+
+func main() {
+	cli, err := cuecl.NewCueClient(":6336")
+	if err != nil {
+		log.Fatal("Failed to connect to server")
+	}
+	defer cli.Close()
+
+	var queueName string = "test"
+
+	err = cli.CreateQueue(queueName)
+	if err != nil {
+		log.Fatal("Failed to create queue")
+	}
+
+	ch, err := cli.Listen(queueName)
+	if err != nil {
+		log.Fatal("Failed to create Listen")
+	}
+
+	for data := range ch {
+		fmt.Println("Recieved: ", string(data), time.Now().UnixMilli())
+	}
+}
+```
+
+### Adding a item to queue
+
+```go
+package main
 
 import (
 	"fmt"
 	"time"
+	"log"
 
-	"github.com/ayushmd/cue"
+	"github.com/ayushmd/cue/pkg/cuecl"
 )
 
-type TTLItem struct {
-	id        int
-	createdAt int64
-}
-
 func main() {
-	ttlq := delayedQ.NewQueue()
+	cli, err := cuecl.NewCueClient(":6336")
+	if err != nil {
+		log.Fatal("Failed to connect to server")
+	}
+	defer cli.Close()
 
-	// Background queue listner
-	go func() {
-		for {
-			select {
-			case job := <-ttlq.Subscribe():
-				jobj := job.(*TTLItem)
-				fmt.Printf(
-					"Recieved Job %d: Created At: %d Recieved At: %d\n",
-					jobj.id, jobj.createdAt, time.Now().Unix(),
-				)
-			}
-		}
-	}()
+	ttl := time.Now().Add(10 * time.Second).UnixMilli()
 
-	ttlq.Push(&TTLItem{
-		id:        1,
-		createdAt: time.Now().Unix(),
-	}, time.Now().Add(10*time.Second).Unix())
+	message := []byte(fmt.Sprintf("{'data':'test data', 'createdAt': '%d'}", time.Now().UnixMilli()))
 
-	ttlq.Push(&TTLItem{
-		id:        2,
-		createdAt: time.Now().Unix(),
-	}, time.Now().Add(5*time.Second).Unix())
+	queueName := "test"
 
-	ttlq.Push(&TTLItem{
-		id:        3,
-		createdAt: time.Now().Unix(),
-	}, time.Now().Add(2*time.Second).Unix())
-	select {}
+	err = cli.PushItem(queueName, message, ttl)
+	if err != nil {
+		fmt.Println("Failed to create item ", err)
+	}
+
 }
 ```

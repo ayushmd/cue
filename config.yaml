@@ -1,0 +1,20 @@
+# Cue config
+
+# The threshold of ttl when message is loaded on Priority Queue
+# Message is loaded on memory (dosent mean it will be gone on switch off)
+priority_time: 9000 # in ms (default 9 seconds)
+
+# The number of retries to send to zombified
+max_retries: 2
+
+# The time after which the retry is performed (in seconds)
+retry_timeout: 10
+
+# Whether to read timed out items after connecting (this will not keep the data after consumption)
+consume_expired: true
+
+# Cleanup timeout for items consumed
+cleanup_timeout: 86400000 # in ms (default 24 hours)
+
+# Server port
+port: 6336
